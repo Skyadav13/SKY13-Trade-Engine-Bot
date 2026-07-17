@@ -3,17 +3,23 @@ import logging
 import os
 import re
 import time
+import threading
 from typing import Optional
 from datetime import datetime
 from urllib.parse import parse_qs, urlparse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
+import requests
+
 logger = logging.getLogger(__name__)
 
 # Conversation states
 WAITING_FOR_AUTH_CODE = 1
 CONFIRMING_AUTH = 2
+
+# Module-level cursor for Telegram getUpdates polling (shared with background poller)
+_telegram_update_offset = 0
 
 
 def extract_auth_code(raw: str) -> str:
@@ -41,7 +47,7 @@ def extract_auth_code(raw: str) -> str:
         except Exception:
             pass
 
-    # If it looks like "#authCode=..." (fragment), try to extract via regex
+    # If it looks like a query/fragment containing authCode etc.
     m = re.search(r'[#?&]?(?:authcode|authCode|auth_code|code)=([^&\s]+)', text)
     if m:
         return m.group(1).strip()
@@ -53,6 +59,54 @@ def extract_auth_code(raw: str) -> str:
     text = text.split("&", 1)[0].split()[0] if text.split() else text
 
     return text.strip()
+
+
+def poll_telegram_authcode(timeout_s: int = 8, not_before_ts: float = 0.0) -> str:
+    """Long-poll Telegram getUpdates for a new text message from the configured
+    TELEGRAM_CHAT_ID and treat its (trimmed) text as a candidate authCode.
+    Returns "" if none. Advances the offset so the same message is never consumed twice.
+    """
+    global _telegram_update_offset
+    token = os.getenv('TELEGRAM_BOT_TOKEN')
+    chat_id = str(os.getenv('TELEGRAM_CHAT_ID', ''))
+    if not token or not chat_id:
+        return ""
+
+    try:
+        resp = requests.get(
+            f"https://api.telegram.org/bot{token}/getUpdates",
+            params={
+                "offset": _telegram_update_offset,
+                "timeout": timeout_s,
+                "allowed_updates": '["message"]',
+            },
+            timeout=timeout_s + 5,
+        )
+        data = resp.json()
+        if not data.get("ok"):
+            return ""
+        for update in data.get("result", []):
+            _telegram_update_offset = update["update_id"] + 1
+            msg = update.get("message", {})
+            msg_chat_id = str(msg.get("chat", {}).get("id", ""))
+            text = (msg.get("text") or "").strip()
+            msg_ts = msg.get("date", 0)
+            if msg_chat_id != chat_id or not text:
+                continue
+            if not_before_ts and msg_ts < not_before_ts:
+                # Acknowledge old message but don't treat as code
+                logger.warning("Ignoring stale queued Telegram message (older than not_before_ts)")
+                continue
+            # Accept prefixed messages like "authCode: XXX" or "/authcode XXX"
+            for prefix in ("authcode:", "authcode", "/authcode"):
+                if text.lower().startswith(prefix):
+                    text = text[len(prefix):].strip(" :")
+                    break
+            if text:
+                return text
+    except Exception as exc:
+        logger.warning("Telegram getUpdates poll failed: %s", exc)
+    return ""
 
 
 class IIFLAuthHandler:
@@ -75,6 +129,8 @@ class IIFLAuthHandler:
         self.chat_id = chat_id
         self.auth_code: Optional[str] = None
         self.app: Optional[Application] = None
+        self._poller_thread: Optional[threading.Thread] = None
+        self._stop_poller = threading.Event()
 
     async def start_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
         """Start IIFL authentication flow."""
@@ -277,8 +333,64 @@ Please send a new AUTH_CODE or the full redirect URL:
         except Exception as e:
             logger.error(f"Failed to send Telegram message: {e}")
 
+    def _background_telegram_poller(self, not_before_ts: float = 0.0):
+        """Background thread that polls Telegram getUpdates for pasted auth codes.
+
+        If a candidate code is found, it attempts broker.login() immediately and
+        forwards the result back to the configured chat via the Bot API.
+        """
+        logger.info("Starting background Telegram poller thread")
+        while not self._stop_poller.is_set():
+            try:
+                candidate = poll_telegram_authcode(timeout_s=10, not_before_ts=not_before_ts)
+                if not candidate:
+                    continue
+                code = extract_auth_code(candidate)
+                if not code or len(code) < 5:
+                    continue
+
+                logger.info("Background poll received auth code (len=%d). Attempting login...", len(code))
+
+                # Attempt to login using broker
+                try:
+                    from broker_iifl import broker
+                    os.environ['IIFL_AUTH_CODE'] = code
+                    login_result = broker.login()
+                except Exception as e:
+                    login_result = False
+                    err = str(e)
+                    logger.error("Error while attempting broker.login() from poller: %s", err)
+
+                # Persist and notify
+                if login_result:
+                    try:
+                        with open('.iifl_auth', 'w') as f:
+                            f.write(code)
+                        logger.info('AUTH_CODE saved to .iifl_auth by poller')
+                    except Exception as e:
+                        logger.warning('Could not write .iifl_auth: %s', e)
+                    text = "✅ IIFL Handshake successful (via pasted message). Bot is ready."
+                else:
+                    text = "❌ IIFL Handshake failed (via pasted message). Please try a fresh authCode."
+
+                # Send synchronous Telegram message via Bot API
+                try:
+                    requests.post(
+                        f"https://api.telegram.org/bot{self.telegram_token}/sendMessage",
+                        json={"chat_id": self.chat_id, "text": text},
+                        timeout=10,
+                    )
+                except Exception as e:
+                    logger.warning("Failed to send Telegram notification from poller: %s", e)
+
+            except Exception as e:
+                logger.warning("Background poller exception: %s", e)
+            finally:
+                # Short sleep to avoid tight loop
+                time.sleep(1)
+
     async def start(self):
-        """Start Telegram bot."""
+        """Start Telegram bot and background poller."""
         logger.info(f"Starting Telegram bot with token: {self.telegram_token[:20]}...")
 
         self.app = Application.builder().token(self.telegram_token).build()
@@ -298,5 +410,22 @@ Waiting for authentication...
 
         await self.send_startup_message(startup_msg)
 
-        # Start bot
+        # Start background poller thread to pick up pasted codes via getUpdates
+        try:
+            not_before_ts = time.time()
+            self._poller_thread = threading.Thread(target=self._background_telegram_poller, args=(not_before_ts,), daemon=True)
+            self._poller_thread.start()
+        except Exception as e:
+            logger.warning("Could not start background poller thread: %s", e)
+
+        # Start bot (blocking)
         await self.app.run_polling()
+
+    def stop(self):
+        """Stop background poller if running."""
+        try:
+            self._stop_poller.set()
+            if self._poller_thread and self._poller_thread.is_alive():
+                self._poller_thread.join(timeout=2)
+        except Exception:
+            pass
