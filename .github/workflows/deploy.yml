@@ -60,23 +60,179 @@ jobs:
       run: |
         uv pip install --system -r requirements.txt
     
-    - name: Create keys.conf
+    - name: Create .env file with IIFL credentials
+      env:
+        IIFL_USERNAME: ${{ secrets.IIFL_USERNAME }}
+        IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
+        IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
+        IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
+        IIFL_API_KEY: ${{ secrets.IIFL_API_KEY }}
+        IIFL_API_SECRET: ${{ secrets.IIFL_API_SECRET }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TRADING_MODE: ${{ secrets.TRADING_MODE || 'paper' }}
+        SYMBOL: ${{ secrets.SYMBOL || 'NIFTY' }}
+        TIMEFRAME: ${{ secrets.TIMEFRAME || '5' }}
+        QUANTITY: ${{ secrets.QUANTITY || '1' }}
+        DAILY_LOSS_LIMIT: ${{ secrets.DAILY_LOSS_LIMIT || '3000' }}
+        LOG_LEVEL: ${{ secrets.LOG_LEVEL || 'INFO' }}
       run: |
-        cat > keys.conf << EOF
-        [KEYS]
-        ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+        cat > .env << 'EOF'
+        IIFL_USERNAME=${{ env.IIFL_USERNAME }}
+        IIFL_PASSWORD=${{ env.IIFL_PASSWORD }}
+        IIFL_VENDOR_KEY=${{ env.IIFL_VENDOR_KEY }}
+        IIFL_APP_SECRET=${{ env.IIFL_APP_SECRET }}
+        IIFL_API_KEY=${{ env.IIFL_API_KEY }}
+        IIFL_API_SECRET=${{ env.IIFL_API_SECRET }}
+        TELEGRAM_BOT_TOKEN=${{ env.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID=${{ env.TELEGRAM_CHAT_ID }}
+        TRADING_MODE=${{ env.TRADING_MODE }}
+        SYMBOL=${{ env.SYMBOL }}
+        TIMEFRAME=${{ env.TIMEFRAME }}
+        QUANTITY=${{ env.QUANTITY }}
+        DAILY_LOSS_LIMIT=${{ env.DAILY_LOSS_LIMIT }}
+        LOG_LEVEL=${{ env.LOG_LEVEL }}
         EOF
     
-    - name: Run Trading Bot
+    - name: Validate Configuration
       env:
-        # Pass your API keys securely via GitHub Secrets
-        IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
-        IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
-        IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
-        IIFL_CLIENT_ID: ${{ secrets.IIFL_CLIENT_ID }}
-        SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-        # Inject your Telegram Keys (Make sure names match your GitHub Secrets exactly)
-        TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }} 
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
+        python -c "
+        import sys
+        from config import config
+        
+        print('🔍 Validating Configuration...')
+        print()
+        
+        errors = []
+        
+        if not config.broker.username:
+            errors.append('IIFL Username not configured')
+        else:
+            print('✅ IIFL Username configured')
+        
+        if not config.broker.password:
+            errors.append('IIFL Password not configured')
+        else:
+            print('✅ IIFL Password configured')
+        
+        if not config.broker.vendor_key:
+            errors.append('IIFL Vendor Key not configured')
+        else:
+            print('✅ IIFL Vendor Key configured')
+        
+        if not config.broker.app_secret:
+            errors.append('IIFL App Secret not configured')
+        else:
+            print('✅ IIFL App Secret configured')
+        
+        if not config.telegram.bot_token:
+            errors.append('Telegram Bot Token not configured')
+        else:
+            print('✅ Telegram Bot Token configured')
+        
+        if not config.telegram.chat_id:
+            errors.append('Telegram Chat ID not configured')
+        else:
+            print('✅ Telegram Chat ID configured')
+        
+        if errors:
+            print()
+            print('❌ Configuration Errors:')
+            for error in errors:
+                print(f'   - {error}')
+            sys.exit(1)
+        
+        print()
+        print('✅ All configuration validated successfully!')
+        print()
+        print('📊 Trading Configuration:')
+        print(f'   Mode: {config.trading.mode}')
+        print(f'   Symbol: {config.trading.symbol}')
+        print(f'   Timeframe: {config.trading.timeframe} min')
+        print(f'   IIFL Base URL: {config.broker.base_url}')
+        print()
+        
+        # Send initial Telegram notification
+        import requests
+        
+        bot_token = '${{ env.TELEGRAM_BOT_TOKEN }}'
+        chat_id = '${{ env.TELEGRAM_CHAT_ID }}'
+        
+        if bot_token and chat_id:
+            message = '''🚀 *SKY13 Trade Engine Bot - Deployment Started*
+
+✅ *Configuration Validated*
+
+📋 *Next Steps to Activate Bot:*
+
+1️⃣ *Get IIFL AUTH_CODE:*
+   - Visit: https://markets.iiflcapital.com/
+   - Login with your credentials
+   - Enter OTP
+   - Look at redirect URL for auth_code parameter
+   - Copy the AUTH_CODE value
+
+2️⃣ *Send AUTH_CODE to Bot:*
+   - Use command: /auth
+   - Paste your AUTH_CODE when prompted
+   - Confirm to establish connection
+
+3️⃣ *Bot will establish:*
+   ✅ IIFL Server connection
+   ✅ API handshake
+   ✅ Trading readiness confirmation
+
+⏰ *Important:* AUTH_CODE expires in 15 minutes
+
+🔐 Waiting for your AUTH_CODE...
+        '''
+            
+            url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
+            payload = {
+                'chat_id': chat_id,
+                'text': message,
+                'parse_mode': 'Markdown'
+            }
+            
+            try:
+                response = requests.post(url, json=payload)
+                if response.status_code == 200:
+                    print('✅ Telegram notification sent - Waiting for AUTH_CODE')
+                else:
+                    print(f'⚠️ Telegram notification failed: {response.text}')
+            except Exception as e:
+                print(f'⚠️ Could not send Telegram notification: {e}')
+        "
+    
+    - name: Start Trade Engine with Telegram Auth
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        echo "🤖 Starting SKY13 Trade Engine..."
+        echo "⏳ Waiting for IIFL AUTH_CODE via Telegram..."
+        echo ""
+        echo "📱 Send /auth command in Telegram to begin authentication"
+        echo "⏰ Deployment will wait for your AUTH_CODE submission"
+        echo ""
         python main.py
+      timeout-minutes: 20
+      continue-on-error: true
+    
+    - name: Deployment Complete
+      run: |
+        echo "✅ Deployment workflow completed"
+        echo ""
+        echo "📌 Bot Status:"
+        echo "- Configuration: ✅ Valid"
+        echo "- IIFL Base URL: https://markets.iiflcapital.com/"
+        echo "- Waiting for IIFL AUTH_CODE via Telegram"
+        echo ""
+        echo "Next steps:"
+        echo "1. Check Telegram for deployment message"
+        echo "2. Get AUTH_CODE from IIFL portal"
+        echo "3. Send /auth command with AUTH_CODE"
+        echo "4. Confirm connection to establish handshake"
