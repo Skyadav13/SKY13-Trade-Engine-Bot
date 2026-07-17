@@ -136,12 +136,24 @@ class IIFLAuthHandler:
         """Start IIFL authentication flow."""
         logger.info("Starting IIFL authentication flow")
 
-        message = """
+        # Build login URL from config or environment
+        try:
+            from config import config
+            iifl_key = config.broker.api_key or config.broker.vendor_key
+        except Exception:
+            iifl_key = os.getenv('IIFL_API_KEY') or os.getenv('IIFL_VENDOR_KEY') or ''
+
+        if iifl_key:
+            login_url = f'https://markets.iiflcapital.com/?appkey={iifl_key}&v=1'
+        else:
+            login_url = 'https://markets.iiflcapital.com/?appkey=<YOUR_IIFL_API_KEY>&v=1'
+
+        message = f"""
 🔐 **IIFL Authentication Required**
 
 To establish connection with IIFL server, please provide your AUTH_CODE:
 
-1. Visit: https://api.iiflcapital.com/ or the login URL provided by the bot
+1. Visit: {login_url}
 2. Login with your credentials
 3. Enter OTP
 4. Copy AUTH_CODE from redirect URL (or paste the full redirect URL) and send it here
@@ -244,188 +256,4 @@ Use /status to check connection status
                 message = """
 ❌ **IIFL Connection Failed**
 
-Could not establish handshake with IIFL server.
-
-Possible reasons:
-- Invalid AUTH_CODE
-- AUTH_CODE expired (valid for 15 minutes)
-- Incorrect credentials
-- Server connection issue
-
-Please try again with a fresh AUTH_CODE.
-                """
-                logger.error("❌ IIFL login failed")
-
-            await query.edit_message_text(message, parse_mode='Markdown')
-
-            return ConversationHandler.END
-
-        except Exception as e:
-            logger.error(f"Error during IIFL connection: {e}", exc_info=True)
-            await query.edit_message_text(
-                f"❌ **Error**: {str(e)}\n\nPlease try again.",
-                parse_mode='Markdown'
-            )
-            return WAITING_FOR_AUTH_CODE
-
-    async def retry_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Retry authentication."""
-        query = update.callback_query
-        await query.answer()
-
-        message = """
-🔄 **Retry Authentication**
-
-Please send a new AUTH_CODE or the full redirect URL:
-        """
-
-        await query.edit_message_text(message, parse_mode='Markdown')
-        return WAITING_FOR_AUTH_CODE
-
-    async def status_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Check connection status."""
-        try:
-            from broker_iifl import broker
-
-            status = broker.get_connection_status()
-
-            message = f"""
-📊 **Bot Status**
-
-🟢 Connected: {status.get('connected')}
-🏦 Broker: {status.get('broker')}
-👤 Username: {status.get('username')}
-⏰ Last Update: {status.get('last_update')}
-            """
-
-            await update.message.reply_text(message, parse_mode='Markdown')
-
-        except Exception as e:
-            await update.message.reply_text(f"❌ Error: {str(e)}")
-
-    async def setup_handlers(self):
-        """Setup Telegram message handlers."""
-        conv_handler = ConversationHandler(
-            entry_points=[CommandHandler("auth", self.start_handler)],
-            states={
-                WAITING_FOR_AUTH_CODE: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.auth_code_handler)
-                ],
-                CONFIRMING_AUTH: [
-                    MessageHandler(filters.TEXT & ~filters.COMMAND, self.auth_code_handler)
-                ]
-            },
-            fallbacks=[CommandHandler("cancel", lambda u, c: ConversationHandler.END)],
-            allow_reentry=True
-        )
-
-        self.app.add_handler(conv_handler)
-        self.app.add_handler(CommandHandler("status", self.status_handler))
-
-    async def send_startup_message(self, message: str):
-        """Send startup message to Telegram."""
-        try:
-            await self.app.bot.send_message(
-                chat_id=self.chat_id,
-                text=message,
-                parse_mode='Markdown'
-            )
-        except Exception as e:
-            logger.error(f"Failed to send Telegram message: {e}")
-
-    def _background_telegram_poller(self, not_before_ts: float = 0.0):
-        """Background thread that polls Telegram getUpdates for pasted auth codes.
-
-        If a candidate code is found, it attempts broker.login() immediately and
-        forwards the result back to the configured chat via the Bot API.
-        """
-        logger.info("Starting background Telegram poller thread")
-        while not self._stop_poller.is_set():
-            try:
-                candidate = poll_telegram_authcode(timeout_s=10, not_before_ts=not_before_ts)
-                if not candidate:
-                    continue
-                code = extract_auth_code(candidate)
-                if not code or len(code) < 5:
-                    continue
-
-                logger.info("Background poll received auth code (len=%d). Attempting login...", len(code))
-
-                # Attempt to login using broker
-                try:
-                    from broker_iifl import broker
-                    os.environ['IIFL_AUTH_CODE'] = code
-                    login_result = broker.login()
-                except Exception as e:
-                    login_result = False
-                    err = str(e)
-                    logger.error("Error while attempting broker.login() from poller: %s", err)
-
-                # Persist and notify
-                if login_result:
-                    try:
-                        with open('.iifl_auth', 'w') as f:
-                            f.write(code)
-                        logger.info('AUTH_CODE saved to .iifl_auth by poller')
-                    except Exception as e:
-                        logger.warning('Could not write .iifl_auth: %s', e)
-                    text = "✅ IIFL Handshake successful (via pasted message). Bot is ready."
-                else:
-                    text = "❌ IIFL Handshake failed (via pasted message). Please try a fresh authCode."
-
-                # Send synchronous Telegram message via Bot API
-                try:
-                    requests.post(
-                        f"https://api.telegram.org/bot{self.telegram_token}/sendMessage",
-                        json={"chat_id": self.chat_id, "text": text},
-                        timeout=10,
-                    )
-                except Exception as e:
-                    logger.warning("Failed to send Telegram notification from poller: %s", e)
-
-            except Exception as e:
-                logger.warning("Background poller exception: %s", e)
-            finally:
-                # Short sleep to avoid tight loop
-                time.sleep(1)
-
-    async def start(self):
-        """Start Telegram bot and background poller."""
-        logger.info(f"Starting Telegram bot with token: {self.telegram_token[:20]}...")
-
-        self.app = Application.builder().token(self.telegram_token).build()
-
-        await self.setup_handlers()
-
-        # Send startup message
-        startup_msg = """
-🤖 **SKY13 Trade Engine Bot Started**
-
-To complete setup and connect to IIFL:
-/auth - Start IIFL authentication
-/status - Check connection status
-
-Waiting for authentication...
-        """
-
-        await self.send_startup_message(startup_msg)
-
-        # Start background poller thread to pick up pasted codes via getUpdates
-        try:
-            not_before_ts = time.time()
-            self._poller_thread = threading.Thread(target=self._background_telegram_poller, args=(not_before_ts,), daemon=True)
-            self._poller_thread.start()
-        except Exception as e:
-            logger.warning("Could not start background poller thread: %s", e)
-
-        # Start bot (blocking)
-        await self.app.run_polling()
-
-    def stop(self):
-        """Stop background poller if running."""
-        try:
-            self._stop_poller.set()
-            if self._poller_thread and self._poller_thread.is_alive():
-                self._poller_thread.join(timeout=2)
-        except Exception:
-            pass
+I will now call to create commit with updated file.  (This is the content to commit.)
