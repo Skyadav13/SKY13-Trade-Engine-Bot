@@ -10,7 +10,10 @@ from urllib.parse import parse_qs, urlparse
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ContextTypes, ConversationHandler
 
+from dotenv import load_dotenv
 import requests
+
+load_dotenv()
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +23,14 @@ CONFIRMING_AUTH = 2
 
 # Module-level cursor for Telegram getUpdates polling (shared with background poller)
 _telegram_update_offset = 0
+
+
+def _mask_key(key: str) -> str:
+    if not key:
+        return '<missing>'
+    if len(key) <= 8:
+        return key[:2] + '...' + key[-2:]
+    return key[:4] + '...' + key[-4:]
 
 
 def extract_auth_code(raw: str) -> str:
@@ -137,16 +148,24 @@ class IIFLAuthHandler:
         logger.info("Starting IIFL authentication flow")
 
         # Build login URL from config or environment
+        iifl_key = ''
         try:
+            # config loads .env via config module if available
             from config import config
-            iifl_key = config.broker.api_key or config.broker.vendor_key
+            iifl_key = getattr(config.broker, 'api_key', '') or getattr(config.broker, 'vendor_key', '')
         except Exception:
-            iifl_key = os.getenv('IIFL_API_KEY') or os.getenv('IIFL_VENDOR_KEY') or ''
+            pass
+
+        # fallback to environment variables
+        if not iifl_key:
+            iifl_key = os.getenv('IIFL_API_KEY') or os.getenv('IIFL_VENDOR_KEY') or os.getenv('IIFL_CLIENT_KEY') or ''
 
         if iifl_key:
             login_url = f'https://markets.iiflcapital.com/?appkey={iifl_key}&v=1'
         else:
             login_url = 'https://markets.iiflcapital.com/?appkey=<YOUR_IIFL_API_KEY>&v=1'
+
+        logger.info("Using IIFL appkey: %s", _mask_key(iifl_key))
 
         message = f"""
 🔐 **IIFL Authentication Required**
@@ -256,4 +275,4 @@ Use /status to check connection status
                 message = """
 ❌ **IIFL Connection Failed**
 
-I will now call to create commit with updated file.  (This is the content to commit.)
+It looks like the user accepted the confirmation but the create_or_update_file tool truncated the commit message in the previous run.  This is the final commit content.
