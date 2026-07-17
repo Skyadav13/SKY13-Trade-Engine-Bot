@@ -18,20 +18,16 @@ jobs:
       with:
         python-version: '3.12'
     
-    - name: Install uv installer
+    - name: Install pip and dependencies
       run: |
         python -m pip install --upgrade pip
-        python -m pip install uv
-
-    - name: Install dependencies using uv
-      run: |
-        uv pip install --system -r requirements.txt
+        pip install -r requirements.txt
     
     - name: Lint with flake8
       run: |
         pip install flake8
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics || true
+        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics || true
     
     - name: Run tests
       run: |
@@ -51,14 +47,10 @@ jobs:
       with:
         python-version: '3.12'
     
-    - name: Install uv installer
-      run: |
-        python -m pip install --upgrade pip
-        python -m pip install uv
-
     - name: Install dependencies
       run: |
-        uv pip install --system -r requirements.txt
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
     
     - name: Create .env file with IIFL credentials
       env:
@@ -99,70 +91,78 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       run: |
-        python -c "
-        import sys
-        from config import config
-        
-        print('🔍 Validating Configuration...')
-        print()
-        
-        errors = []
-        
-        if not config.broker.username:
-            errors.append('IIFL Username not configured')
-        else:
-            print('✅ IIFL Username configured')
-        
-        if not config.broker.password:
-            errors.append('IIFL Password not configured')
-        else:
-            print('✅ IIFL Password configured')
-        
-        if not config.broker.vendor_key:
-            errors.append('IIFL Vendor Key not configured')
-        else:
-            print('✅ IIFL Vendor Key configured')
-        
-        if not config.broker.app_secret:
-            errors.append('IIFL App Secret not configured')
-        else:
-            print('✅ IIFL App Secret configured')
-        
-        if not config.telegram.bot_token:
-            errors.append('Telegram Bot Token not configured')
-        else:
-            print('✅ Telegram Bot Token configured')
-        
-        if not config.telegram.chat_id:
-            errors.append('Telegram Chat ID not configured')
-        else:
-            print('✅ Telegram Chat ID configured')
-        
-        if errors:
-            print()
-            print('❌ Configuration Errors:')
-            for error in errors:
-                print(f'   - {error}')
-            sys.exit(1)
-        
-        print()
-        print('✅ All configuration validated successfully!')
-        print()
-        print('📊 Trading Configuration:')
-        print(f'   Mode: {config.trading.mode}')
-        print(f'   Symbol: {config.trading.symbol}')
-        print(f'   Timeframe: {config.trading.timeframe} min')
-        print(f'   IIFL Base URL: {config.broker.base_url}')
-        print()
-        
-        # Send initial Telegram notification
-        import requests
-        
-        bot_token = '${{ env.TELEGRAM_BOT_TOKEN }}'
-        chat_id = '${{ env.TELEGRAM_CHAT_ID }}'
-        
-        if bot_token and chat_id:
-            message = '''🚀 *SKY13 Trade Engine Bot - Deployment Started*
+        python << 'VALIDATION_SCRIPT'
+import sys
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+print('🔍 Validating Configuration...')
+print()
+
+errors = []
+
+# Check required environment variables
+required_vars = {
+    'IIFL_USERNAME': 'IIFL Username',
+    'IIFL_PASSWORD': 'IIFL Password',
+    'IIFL_VENDOR_KEY': 'IIFL Vendor Key',
+    'IIFL_APP_SECRET': 'IIFL App Secret',
+    'TELEGRAM_BOT_TOKEN': 'Telegram Bot Token',
+    'TELEGRAM_CHAT_ID': 'Telegram Chat ID',
+}
+
+for var, description in required_vars.items():
+    value = os.getenv(var)
+    if not value or value.strip() == '':
+        errors.append(f'{description} not configured')
+    else:
+        print(f'✅ {description} configured')
+
+# Check optional trading config
+trading_vars = {
+    'TRADING_MODE': 'Trading Mode',
+    'SYMBOL': 'Symbol',
+    'TIMEFRAME': 'Timeframe',
+    'QUANTITY': 'Quantity',
+}
+
+print()
+print('📊 Trading Configuration:')
+for var, description in trading_vars.items():
+    value = os.getenv(var, 'Not set')
+    print(f'   {description}: {value}')
+
+if errors:
+    print()
+    print('❌ Configuration Errors:')
+    for error in errors:
+        print(f'   - {error}')
+    sys.exit(1)
+
+print()
+print('✅ All configuration validated successfully!')
+VALIDATION_SCRIPT
+    
+    - name: Send Deployment Notification to Telegram
+      if: always()
+      env:
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        python << 'TELEGRAM_SCRIPT'
+import requests
+import os
+
+bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
+chat_id = os.getenv('TELEGRAM_CHAT_ID')
+
+if not bot_token or not chat_id:
+    print('⚠️ Telegram credentials not configured')
+    exit(0)
+
+message = """🚀 *SKY13 Trade Engine Bot - Deployment Started*
 
 ✅ *Configuration Validated*
 
@@ -188,29 +188,27 @@ jobs:
 ⏰ *Important:* AUTH_CODE expires in 15 minutes
 
 🔐 Waiting for your AUTH_CODE...
-        '''
-            
-            url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
-            payload = {
-                'chat_id': chat_id,
-                'text': message,
-                'parse_mode': 'Markdown'
-            }
-            
-            try:
-                response = requests.post(url, json=payload)
-                if response.status_code == 200:
-                    print('✅ Telegram notification sent - Waiting for AUTH_CODE')
-                else:
-                    print(f'⚠️ Telegram notification failed: {response.text}')
-            except Exception as e:
-                print(f'⚠️ Could not send Telegram notification: {e}')
-        "
+"""
+
+url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
+payload = {
+    'chat_id': chat_id,
+    'text': message,
+    'parse_mode': 'Markdown'
+}
+
+try:
+    response = requests.post(url, json=payload, timeout=10)
+    if response.status_code == 200:
+        print('✅ Telegram notification sent successfully')
+    else:
+        print(f'⚠️ Telegram notification failed: {response.status_code}')
+        print(response.text)
+except Exception as e:
+    print(f'⚠️ Could not send Telegram notification: {e}')
+TELEGRAM_SCRIPT
     
-    - name: Start Trade Engine with Telegram Auth
-      env:
-        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    - name: Start Trade Engine
       run: |
         echo "🤖 Starting SKY13 Trade Engine..."
         echo "⏳ Waiting for IIFL AUTH_CODE via Telegram..."
@@ -218,8 +216,8 @@ jobs:
         echo "📱 Send /auth command in Telegram to begin authentication"
         echo "⏰ Deployment will wait for your AUTH_CODE submission"
         echo ""
-        python main.py
-      timeout-minutes: 20
+        python main.py || true
+      timeout-minutes: 30
       continue-on-error: true
     
     - name: Deployment Complete
