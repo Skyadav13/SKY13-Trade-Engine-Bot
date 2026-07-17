@@ -1,4 +1,4 @@
-name: Deploy Trade Engine Bota
+name: Deploy Trade Engine Bot
 
 on:
   push:
