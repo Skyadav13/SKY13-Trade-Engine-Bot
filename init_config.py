@@ -10,18 +10,29 @@ def setup_iifl_config():
     """Setup IIFL configuration file required by IIFLapis SDK.
     
     Creates keys.conf file with necessary IIFL SDK configuration.
+    Includes AUTH_CODE obtained from IIFL portal after OTP verification.
     """
     try:
+        # Get AUTH_CODE from environment (user must provide this from IIFL portal)
+        auth_code = os.getenv('IIFL_AUTH_CODE', '')
+        user_key = os.getenv('IIFL_USER_KEY', '')
+        app_source = os.getenv('IIFL_APP_SOURCE', 'API')
+        
+        logger.info(f'Setting up IIFL configuration...')
+        logger.info(f'Auth Code provided: {"Yes" if auth_code else "No"}')
+        logger.info(f'User Key provided: {"Yes" if user_key else "No"}')
+        
         # Create keys.conf content with IIFL SDK requirements
         keys_conf_content = f"""[KEYS]
 USERID={config.broker.username}
 PASSWORD={config.broker.password}
 ENCRYPTION_KEY={config.security.encryption_key}
 SESSION_SECRET={config.security.session_secret}
-APP_SOURCE=API
-USER_KEY={os.getenv('IIFL_USER_KEY', 'DEFAULT_USER_KEY')}
+APP_SOURCE={app_source}
+USER_KEY={user_key}
 API_KEY={config.broker.api_key}
 API_SECRET={config.broker.api_secret}
+AUTH_CODE={auth_code}
 """
         
         # Write keys.conf file
