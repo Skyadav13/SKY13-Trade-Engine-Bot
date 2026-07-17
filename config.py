@@ -1,10 +1,25 @@
 """Configuration Management for SKY13 Trade Engine."""
 import os
+import secrets
+import string
 from dotenv import load_dotenv
 from dataclasses import dataclass
 from typing import Optional
 
 load_dotenv()
+
+
+def generate_random_key(length: int = 32) -> str:
+    """Generate a random key for encryption/session.
+    
+    Args:
+        length: Length of the key to generate (default 32)
+    
+    Returns:
+        Random alphanumeric string
+    """
+    chars = string.ascii_letters + string.digits + string.punctuation
+    return ''.join(secrets.choice(chars) for _ in range(length))
 
 
 @dataclass
@@ -15,6 +30,23 @@ class BrokerConfig:
     api_key: str = os.getenv('IIFL_API_KEY', '')
     api_secret: str = os.getenv('IIFL_API_SECRET', '')
     base_url: str = 'https://api.iiflsecurities.com'
+
+
+@dataclass
+class SecurityConfig:
+    """Security Configuration for encryption and sessions."""
+    encryption_key: str = os.getenv('ENCRYPTION_KEY', '')
+    session_secret: str = os.getenv('SESSION_SECRET', '')
+    
+    def __post_init__(self):
+        """Generate keys if not provided."""
+        # Generate encryption key if not provided
+        if not self.encryption_key:
+            self.encryption_key = generate_random_key(32)
+        
+        # Generate session secret if not provided
+        if not self.session_secret:
+            self.session_secret = generate_random_key(32)
 
 
 @dataclass
@@ -111,6 +143,7 @@ class Config:
     
     def __init__(self):
         self.broker = BrokerConfig()
+        self.security = SecurityConfig()
         self.telegram = TelegramConfig()
         self.ema = EMAConfig()
         self.rsi = RSIConfig()
