@@ -27,9 +27,11 @@ class BrokerConfig:
     """IIFL Broker Configuration."""
     username: str = os.getenv('IIFL_USERNAME', '')
     password: str = os.getenv('IIFL_PASSWORD', '')
+    vendor_key: str = os.getenv('IIFL_VENDOR_KEY', '')
+    app_secret: str = os.getenv('IIFL_APP_SECRET', '')
     api_key: str = os.getenv('IIFL_API_KEY', '')
     api_secret: str = os.getenv('IIFL_API_SECRET', '')
-    base_url: str = 'https://api.iiflsecurities.com'
+    base_url: str = 'https://markets.iiflcapital.com/'
 
 
 @dataclass
@@ -159,6 +161,10 @@ class Config:
         """Validate configuration."""
         if not self.broker.username or not self.broker.password:
             raise ValueError('IIFL credentials not configured')
+        if not self.broker.vendor_key:
+            raise ValueError('IIFL Vendor Key not configured')
+        if not self.broker.app_secret:
+            raise ValueError('IIFL App Secret not configured')
         if self.trading.mode not in ['paper', 'live']:
             raise ValueError('Invalid trading mode')
         if self.trading.symbol not in ['NIFTY', 'BANKNIFTY', 'FINNIFTY', 'MIDCPNIFTY', 'SENSEX']:
