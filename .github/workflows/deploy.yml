@@ -90,8 +90,7 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        python << 'VALIDATION_SCRIPT'
+      run: python << 'VALIDATION_SCRIPT'
 import sys
 import os
 from dotenv import load_dotenv
@@ -150,8 +149,7 @@ VALIDATION_SCRIPT
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: |
-        python << 'TELEGRAM_SCRIPT'
+      run: python << 'TELEGRAM_SCRIPT'
 import requests
 import os
 
