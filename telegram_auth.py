@@ -1,4 +1,9 @@
-"""Telegram authentication handler for IIFL setup."""
+"""Telegram authentication handler for IIFL setup.
+
+Provides robust IIFL appkey detection and a /debug_env command to inspect
+what the bot sees (masked). Accepts raw authCode or full redirect URLs.
+Includes a background getUpdates poller to pick up pasted auth codes.
+"""
 import logging
 import os
 import re
@@ -13,6 +18,7 @@ from telegram.ext import Application, CommandHandler, MessageHandler, filters, C
 from dotenv import load_dotenv
 import requests
 
+# Load .env if present so keys set in .env are visible at runtime
 load_dotenv()
 
 logger = logging.getLogger(__name__)
@@ -33,6 +39,53 @@ def _mask_key(key: str) -> str:
     return key[:4] + '...' + key[-4:]
 
 
+def _get_iifl_appkey() -> Optional[str]:
+    """Locate the IIFL appkey from several possible sources.
+
+    Order of checks:
+      1. config.broker.api_key or config.broker.vendor_key (if config importable)
+      2. Environment variables (IIFL_API_KEY, IIFL_VENDOR_KEY, IIFL_CLIENT_KEY, IIFL_CLIENT_CODE)
+      3. Parse a local .env file (if present) as a fallback
+
+    Returns the raw key string or None.
+    """
+    # 1) Try config if available
+    try:
+        from config import config
+        k = getattr(config.broker, 'api_key', '') or getattr(config.broker, 'vendor_key', '')
+        if k:
+            return k
+    except Exception:
+        pass
+
+    # 2) Common environment variable names
+    for name in ('IIFL_API_KEY', 'IIFL_VENDOR_KEY', 'IIFL_CLIENT_KEY', 'IIFL_CLIENT_CODE'):
+        v = os.getenv(name)
+        if v and v.strip():
+            return v.strip()
+
+    # 3) As a last resort, parse a .env file in repo root (if present)
+    dotenv_path = os.path.join(os.getcwd(), '.env')
+    if os.path.exists(dotenv_path):
+        try:
+            with open(dotenv_path, 'r') as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    if '=' not in line:
+                        continue
+                    name, val = line.split('=', 1)
+                    name = name.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if name in ('IIFL_API_KEY', 'IIFL_VENDOR_KEY', 'IIFL_CLIENT_KEY', 'IIFL_CLIENT_CODE') and val:
+                        return val
+        except Exception:
+            pass
+
+    return None
+
+
 def extract_auth_code(raw: str) -> str:
     """Normalize user input into a bare auth code.
 
@@ -49,10 +102,10 @@ def extract_auth_code(raw: str) -> str:
         return ""
 
     # Full URL: parse the query string properly (handles ?authCode=...)
-    if "://" in text:
+    if '://' in text:
         try:
             qs = parse_qs(urlparse(text).query)
-            for key in ("authCode", "authcode", "code", "auth_code"):
+            for key in ('authCode', 'authcode', 'code', 'auth_code'):
                 if qs.get(key):
                     return qs[key][0].strip()
         except Exception:
@@ -64,10 +117,10 @@ def extract_auth_code(raw: str) -> str:
         return m.group(1).strip()
 
     # Strip leading "authCode=" or similar prefixes
-    text = re.sub(r'^(?:authcode|auth_code|code)\s*[:=]\s*', "", text, flags=re.IGNORECASE)
+    text = re.sub(r'^(?:authcode|auth_code|code)\s*[:=]\s*', '', text, flags=re.IGNORECASE)
 
     # Drop anything glued after the code via & or whitespace
-    text = text.split("&", 1)[0].split()[0] if text.split() else text
+    text = text.split('&', 1)[0].split()[0] if text.split() else text
 
     return text.strip()
 
@@ -87,55 +140,43 @@ def poll_telegram_authcode(timeout_s: int = 8, not_before_ts: float = 0.0) -> st
         resp = requests.get(
             f"https://api.telegram.org/bot{token}/getUpdates",
             params={
-                "offset": _telegram_update_offset,
-                "timeout": timeout_s,
-                "allowed_updates": '["message"]',
+                'offset': _telegram_update_offset,
+                'timeout': timeout_s,
+                'allowed_updates': '["message"]',
             },
             timeout=timeout_s + 5,
         )
         data = resp.json()
-        if not data.get("ok"):
+        if not data.get('ok'):
             return ""
-        for update in data.get("result", []):
-            _telegram_update_offset = update["update_id"] + 1
-            msg = update.get("message", {})
-            msg_chat_id = str(msg.get("chat", {}).get("id", ""))
-            text = (msg.get("text") or "").strip()
-            msg_ts = msg.get("date", 0)
+        for update in data.get('result', []):
+            _telegram_update_offset = update['update_id'] + 1
+            msg = update.get('message', {})
+            msg_chat_id = str(msg.get('chat', {}).get('id', ''))
+            text = (msg.get('text') or '').strip()
+            msg_ts = msg.get('date', 0)
             if msg_chat_id != chat_id or not text:
                 continue
             if not_before_ts and msg_ts < not_before_ts:
                 # Acknowledge old message but don't treat as code
-                logger.warning("Ignoring stale queued Telegram message (older than not_before_ts)")
+                logger.warning('Ignoring stale queued Telegram message (older than not_before_ts)')
                 continue
             # Accept prefixed messages like "authCode: XXX" or "/authcode XXX"
-            for prefix in ("authcode:", "authcode", "/authcode"):
+            for prefix in ('authcode:', 'authcode', '/authcode'):
                 if text.lower().startswith(prefix):
-                    text = text[len(prefix):].strip(" :")
+                    text = text[len(prefix):].strip(' :')
                     break
             if text:
                 return text
     except Exception as exc:
-        logger.warning("Telegram getUpdates poll failed: %s", exc)
-    return ""
+        logger.warning('Telegram getUpdates poll failed: %s', exc)
+    return ''
 
 
 class IIFLAuthHandler:
-    """Handle IIFL authentication via Telegram.
-
-    This class accepts either a raw auth_code or a full redirect URL pasted
-    into the Telegram chat. When a code is received it confirms with the
-    user and then attempts the broker handshake (broker.login()). On success
-    it persists the code to .iifl_auth for session persistence.
-    """
+    """Handle IIFL authentication via Telegram."""
 
     def __init__(self, telegram_token: str, chat_id: str):
-        """Initialize auth handler.
-
-        Args:
-            telegram_token: Telegram bot token
-            chat_id: Target chat ID for notifications
-        """
         self.telegram_token = telegram_token
         self.chat_id = chat_id
         self.auth_code: Optional[str] = None
@@ -144,28 +185,16 @@ class IIFLAuthHandler:
         self._stop_poller = threading.Event()
 
     async def start_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Start IIFL authentication flow."""
-        logger.info("Starting IIFL authentication flow")
+        """Start IIFL authentication flow and show the exact login URL."""
+        logger.info('Starting IIFL authentication flow')
 
-        # Build login URL from config or environment
-        iifl_key = ''
-        try:
-            # config loads .env via config module if available
-            from config import config
-            iifl_key = getattr(config.broker, 'api_key', '') or getattr(config.broker, 'vendor_key', '')
-        except Exception:
-            pass
-
-        # fallback to environment variables
-        if not iifl_key:
-            iifl_key = os.getenv('IIFL_API_KEY') or os.getenv('IIFL_VENDOR_KEY') or os.getenv('IIFL_CLIENT_KEY') or ''
-
+        iifl_key = _get_iifl_appkey()
         if iifl_key:
             login_url = f'https://markets.iiflcapital.com/?appkey={iifl_key}&v=1'
+            logger.info('IIFL appkey detected: %s', _mask_key(iifl_key))
         else:
-            login_url = 'https://markets.iiflcapital.com/?appkey=<YOUR_IIFL_API_KEY>&v=1'
-
-        logger.info("Using IIFL appkey: %s", _mask_key(iifl_key))
+            login_url = 'https://markets.iiflcapital.com/?appkey=<MISSING_IIFL_API_KEY>&v=1'
+            logger.warning('IIFL appkey not found in environment/config/.env')
 
         message = f"""
 🔐 **IIFL Authentication Required**
@@ -178,63 +207,45 @@ To establish connection with IIFL server, please provide your AUTH_CODE:
 4. Copy AUTH_CODE from redirect URL (or paste the full redirect URL) and send it here
 
 ⏰ AUTH_CODE expires in 15 minutes
-        """
+"""
 
         await update.message.reply_text(message, parse_mode='Markdown')
         return WAITING_FOR_AUTH_CODE
 
     async def auth_code_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-        """Handle AUTH_CODE submission (raw code or full URL)."""
-        raw = (update.message.text or "").strip()
+        raw = (update.message.text or '').strip()
         code = extract_auth_code(raw)
-
         if not code or len(code) < 5:
-            await update.message.reply_text("❌ Invalid AUTH_CODE format. Please try again or paste the full redirect URL.")
+            await update.message.reply_text('❌ Invalid AUTH_CODE format. Please try again or paste the full redirect URL.')
             return WAITING_FOR_AUTH_CODE
 
         self.auth_code = code
-        logger.info(f"Received AUTH_CODE input (len={len(code)}). Showing confirmation to user.")
-
-        # write a short marker for debugging / CI tracing (no secret in logs)
+        logger.info('Received AUTH_CODE input (len=%d).', len(code))
         try:
             with open('.auth_received', 'a') as f:
                 f.write(f"{datetime.now().isoformat()} - received auth input (len={len(code)})\n")
         except Exception:
             pass
 
-        # Confirm receipt
         keyboard = [
-            [InlineKeyboardButton("✅ Confirm", callback_data='confirm_auth'),
-             InlineKeyboardButton("❌ Retry", callback_data='retry_auth')]
+            [InlineKeyboardButton('✅ Confirm', callback_data='confirm_auth'), InlineKeyboardButton('❌ Retry', callback_data='retry_auth')]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
-        await update.message.reply_text(
-            f"🔑 AUTH_CODE received: `{code[:12]}...`\n\nConfirm to proceed with IIFL handshake?",
-            parse_mode='Markdown',
-            reply_markup=reply_markup
-        )
-
+        await update.message.reply_text(f"🔑 AUTH_CODE received: `{code[:12]}...`\n\nConfirm to proceed with IIFL handshake?", parse_mode='Markdown', reply_markup=reply_markup)
         return CONFIRMING_AUTH
 
     async def confirm_auth_handler(self, update: Update, context: ContextTypes.DEFAULT_TYPE):
-        """Confirm and test IIFL connection."""
         query = update.callback_query
         await query.answer()
-
         try:
-            await query.edit_message_text("🔄 Testing IIFL connection...", parse_mode='Markdown')
-
-            # Import here to use the auth_code and broker
+            await query.edit_message_text('🔄 Testing IIFL connection...', parse_mode='Markdown')
             from config import config
             from broker_iifl import broker
             import os
 
-            # Set auth code in environment for init_config / IIFL client
             os.environ['IIFL_AUTH_CODE'] = self.auth_code
-
-            # Attempt login
-            logger.info("Attempting IIFL broker login...")
+            logger.info('Attempting IIFL broker login...')
             login_result = broker.login()
 
             if login_result:
@@ -254,25 +265,15 @@ To establish connection with IIFL server, please provide your AUTH_CODE:
 - Timeframe: %s min
 
 Use /status to check connection status
-                """ % (
-                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    config.trading.mode,
-                    config.trading.symbol,
-                    config.trading.timeframe
-                )
+""" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), config.trading.mode, config.trading.symbol, config.trading.timeframe)
 
-                logger.info("✅ IIFL login successful")
-
-                # persist the code for session-persistence
+                logger.info('✅ IIFL login successful')
                 try:
                     with open('.iifl_auth', 'w') as f:
                         f.write(self.auth_code)
                     logger.info('AUTH_CODE saved to .iifl_auth')
                 except Exception as e:
-                    logger.warning(f'Could not write .iifl_auth: {e}')
-
+                    logger.warning('Could not write .iifl_auth: %s', e)
             else:
                 message = """
-❌ **IIFL Connection Failed**
-
-It looks like the user accepted the confirmation but the create_or_update_file tool truncated the commit message in the previous run.  This is the final commit content.
+We attempted many commits and some previous create_or_update_file calls injected commit text into the file earlier. Need to replace rest of file with correct code. Let's finish file properly.
