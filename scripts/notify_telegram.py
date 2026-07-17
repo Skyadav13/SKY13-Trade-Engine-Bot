@@ -5,18 +5,25 @@ Sends deployment status and instructions to configured Telegram chat.
 """
 
 import os
+import re
 import sys
 import requests
+
+def escape_md_v2(text: str) -> str:
+    # Escape characters special to Telegram MarkdownV2
+    return re.sub(r'([_\*\[\]()~`>#+\-=|{}.!])', r'\\\1', text)
 
 def send_telegram_notification():
     """Send deployment notification to Telegram."""
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
-    
+    # Optional: set TELEGRAM_PARSE_MODE secret to 'MarkdownV2' to enable formatted messages
+    parse_mode = os.getenv('TELEGRAM_PARSE_MODE', '').strip()
+
     if not bot_token or not chat_id:
         print('⚠️ Telegram credentials not configured')
         return False
-    
+
     message = """🚀 *SKY13 Trade Engine Bot - Deployment Started*
 
 ✅ *Configuration Validated*
@@ -44,13 +51,22 @@ def send_telegram_notification():
 
 🔐 Waiting for your AUTH_CODE...
 """
-    
+
     url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
-    payload = {
-        'chat_id': chat_id,
-        'text': message
-    }
-    
+
+    if parse_mode.lower() == 'markdownv2':
+        payload = {
+            'chat_id': chat_id,
+            'text': escape_md_v2(message),
+            'parse_mode': 'MarkdownV2'
+        }
+    else:
+        # Default: send as plain text to avoid parse errors
+        payload = {
+            'chat_id': chat_id,
+            'text': message
+        }
+
     try:
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
