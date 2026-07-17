@@ -3,11 +3,13 @@
 
 import logging
 import sys
+import asyncio
 from datetime import datetime
 from config import config
 from database import db
 from broker_iifl import broker
 from telegram_bot import TelegramBot
+from telegram_auth import IIFLAuthHandler
 from ema_engine import EMAEngine
 from trading_engine import TradingEngine
 from risk_manager import RiskManager
@@ -47,8 +49,22 @@ class SKY13TradeEngine:
         self.risk_manager = RiskManager()
         self.signal_filter = SignalFilter()
         
+        # Initialize IIFL auth handler
+        self.auth_handler = IIFLAuthHandler(
+            config.telegram.bot_token,
+            config.telegram.chat_id
+        )
+        
         self.is_running = False
         logger.info('SKY13 Trade Engine initialized successfully')
+    
+    async def start_telegram_auth(self):
+        """Start Telegram authentication handler."""
+        logger.info('Starting Telegram authentication handler...')
+        try:
+            await self.auth_handler.start()
+        except Exception as e:
+            logger.error(f'Telegram handler error: {e}')
     
     def start(self) -> bool:
         """Start the trade engine.
@@ -59,11 +75,22 @@ class SKY13TradeEngine:
         logger.info('Starting SKY13 Trade Engine')
         
         try:
+            # Check if AUTH_CODE is available
+            import os
+            auth_code = os.getenv('IIFL_AUTH_CODE') or None
+            
+            if not auth_code:
+                logger.warning('IIFL_AUTH_CODE not found. Waiting for Telegram authentication...')
+                self.telegram.send_startup_message('WAITING_AUTH')
+                return False
+            
             # Connect to broker
             if not broker.login():
                 logger.error('Failed to login to broker')
                 self.telegram.send_startup_message('FAILED')
                 return False
+            
+            logger.info('✅ IIFL broker connected successfully')
             
             # Download historical candles for EMA warm-up
             logger.info('Downloading historical candles...')
@@ -208,8 +235,25 @@ class SKY13TradeEngine:
 
 def main():
     """Main entry point."""
-    engine = SKY13TradeEngine()
-    engine.run()
+    import os
+    
+    # Check if running in deployment mode with Telegram auth
+    if os.getenv('TELEGRAM_BOT_TOKEN') and os.getenv('TELEGRAM_CHAT_ID'):
+        logger.info('Starting with Telegram authentication mode')
+        engine = SKY13TradeEngine()
+        
+        # Run Telegram handler in background
+        try:
+            asyncio.run(engine.start_telegram_auth())
+        except KeyboardInterrupt:
+            logger.info('Telegram handler stopped')
+        except Exception as e:
+            logger.error(f'Telegram handler error: {e}')
+            engine.run()  # Fallback to normal mode
+    else:
+        # Run in normal mode without Telegram auth
+        engine = SKY13TradeEngine()
+        engine.run()
 
 
 if __name__ == '__main__':
