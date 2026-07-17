@@ -1,1 +1,241 @@
-"""Technical Indicators for SKY13 Trade Engine."""\nimport logging\nfrom typing import List, Optional, Tuple\nfrom collections import deque\n\nlogger = logging.getLogger(__name__)\n\n\nclass RSI:\n    \"\"\"Relative Strength Index indicator.\"\"\"\n    \n    def __init__(self, period: int = 14):\n        \"\"\"Initialize RSI calculator.\n        \n        Args:\n            period: RSI period (default 14)\n        \"\"\"\n        self.period = period\n        self.prices = deque(maxlen=period + 1)\n        self.rsi_value = None\n    \n    def add_price(self, price: float) -> Optional[float]:\n        \"\"\"Add a new price and calculate RSI.\n        \n        Args:\n            price: New price\n        \n        Returns:\n            RSI value or None if not enough data\n        \"\"\"\n        self.prices.append(price)\n        \n        if len(self.prices) < self.period + 1:\n            return None\n        \n        prices_list = list(self.prices)\n        gains = 0.0\n        losses = 0.0\n        \n        # Calculate price changes\n        for i in range(1, len(prices_list)):\n            change = prices_list[i] - prices_list[i - 1]\n            if change > 0:\n                gains += change\n            else:\n                losses += abs(change)\n        \n        avg_gain = gains / self.period\n        avg_loss = losses / self.period\n        \n        if avg_loss == 0:\n            self.rsi_value = 100.0 if avg_gain > 0 else 0.0\n        else:\n            rs = avg_gain / avg_loss\n            self.rsi_value = 100.0 - (100.0 / (1.0 + rs))\n        \n        return self.rsi_value\n    \n    def get_rsi(self) -> Optional[float]:\n        \"\"\"Get current RSI value.\n        \n        Returns:\n            RSI value or None\n        \"\"\"\n        return self.rsi_value\n    \n    def reset(self):\n        \"\"\"Reset RSI calculator.\"\"\"\n        self.prices.clear()\n        self.rsi_value = None\n\n\nclass ATR:\n    \"\"\"Average True Range indicator.\"\"\"\n    \n    def __init__(self, period: int = 14):\n        \"\"\"Initialize ATR calculator.\n        \n        Args:\n            period: ATR period (default 14)\n        \"\"\"\n        self.period = period\n        self.true_ranges = deque(maxlen=period)\n        self.atr_value = None\n        self.first_atr = True\n    \n    def add_candle(self, high: float, low: float, close: float,\n                   prev_close: float = None) -> Optional[float]:\n        \"\"\"Add a candle and calculate ATR.\n        \n        Args:\n            high: High price of candle\n            low: Low price of candle\n            close: Close price of candle\n            prev_close: Previous close price\n        \n        Returns:\n            ATR value or None if not enough data\n        \"\"\"\n        # Calculate true range\n        tr1 = high - low\n        tr2 = abs(high - prev_close) if prev_close else 0\n        tr3 = abs(low - prev_close) if prev_close else 0\n        true_range = max(tr1, tr2, tr3)\n        \n        self.true_ranges.append(true_range)\n        \n        if len(self.true_ranges) < self.period:\n            return None\n        \n        # Calculate ATR\n        if self.first_atr:\n            self.atr_value = sum(self.true_ranges) / self.period\n            self.first_atr = False\n        else:\n            self.atr_value = (self.atr_value * (self.period - 1) + true_range) / self.period\n        \n        return self.atr_value\n    \n    def get_atr(self) -> Optional[float]:\n        \"\"\"Get current ATR value.\n        \n        Returns:\n            ATR value or None\n        \"\"\"\n        return self.atr_value\n    \n    def reset(self):\n        \"\"\"Reset ATR calculator.\"\"\"\n        self.true_ranges.clear()\n        self.atr_value = None\n        self.first_atr = True\n\n\nclass ADX:\n    \"\"\"Average Directional Index indicator.\"\"\"\n    \n    def __init__(self, period: int = 14):\n        \"\"\"Initialize ADX calculator.\n        \n        Args:\n            period: ADX period (default 14)\n        \"\"\"\n        self.period = period\n        self.plus_dm_values = deque(maxlen=period)\n        self.minus_dm_values = deque(maxlen=period)\n        self.plus_di = None\n        self.minus_di = None\n        self.adx_value = None\n        self.dx_values = deque(maxlen=period)\n        self.first_adx = True\n    \n    def add_candle(self, high: float, low: float, close: float,\n                   prev_high: float = None, prev_low: float = None,\n                   prev_close: float = None, atr: float = None) -> Optional[float]:\n        \"\"\"Add a candle and calculate ADX.\n        \n        Args:\n            high: High price\n            low: Low price\n            close: Close price\n            prev_high: Previous high\n            prev_low: Previous low\n            prev_close: Previous close\n            atr: ATR value for DI calculation\n        \n        Returns:\n            ADX value or None if not enough data\n        \"\"\"\n        if prev_high is None or prev_low is None:\n            return None\n        \n        # Calculate directional movements\n        plus_dm = max(high - prev_high, 0) if high > prev_high else 0\n        minus_dm = max(prev_low - low, 0) if low < prev_low else 0\n        \n        # Apply directional rules\n        if plus_dm > minus_dm:\n            minus_dm = 0\n        elif minus_dm > plus_dm:\n            plus_dm = 0\n        elif plus_dm == minus_dm and plus_dm > 0:\n            plus_dm = 0\n            minus_dm = 0\n        \n        self.plus_dm_values.append(plus_dm)\n        self.minus_dm_values.append(minus_dm)\n        \n        if len(self.plus_dm_values) < self.period or atr is None or atr == 0:\n            return None\n        \n        # Calculate DI values\n        plus_di_raw = (sum(self.plus_dm_values) / atr) * 100\n        minus_di_raw = (sum(self.minus_dm_values) / atr) * 100\n        \n        self.plus_di = plus_di_raw\n        self.minus_di = minus_di_raw\n        \n        # Calculate DX\n        di_sum = self.plus_di + self.minus_di\n        if di_sum > 0:\n            dx = (abs(self.plus_di - self.minus_di) / di_sum) * 100\n            self.dx_values.append(dx)\n        \n        if len(self.dx_values) < self.period:\n            return None\n        \n        # Calculate ADX\n        if self.first_adx:\n            self.adx_value = sum(self.dx_values) / self.period\n            self.first_adx = False\n        else:\n            self.adx_value = (self.adx_value * (self.period - 1) + self.dx_values[-1]) / self.period\n        \n        return self.adx_value\n    \n    def get_adx(self) -> Optional[float]:\n        \"\"\"Get current ADX value.\n        \n        Returns:\n            ADX value or None\n        \"\"\"\n        return self.adx_value\n    \n    def get_plus_di(self) -> Optional[float]:\n        \"\"\"Get +DI value.\"\"\"\n        return self.plus_di\n    \n    def get_minus_di(self) -> Optional[float]:\n        \"\"\"Get -DI value.\"\"\"\n        return self.minus_di\n    \n    def reset(self):\n        \"\"\"Reset ADX calculator.\"\"\"\n        self.plus_dm_values.clear()\n        self.minus_dm_values.clear()\n        self.dx_values.clear()\n        self.plus_di = None\n        self.minus_di = None\n        self.adx_value = None\n        self.first_adx = True\n"
+"""Technical Indicators for SKY13 Trade Engine."""
+import logging
+from typing import List, Optional, Tuple
+from collections import deque
+
+logger = logging.getLogger(__name__)
+
+
+class RSI:
+    """Relative Strength Index indicator."""
+    
+    def __init__(self, period: int = 14):
+        """Initialize RSI calculator.
+        
+        Args:
+            period: RSI period (default 14)
+        """
+        self.period = period
+        self.prices = deque(maxlen=period + 1)
+        self.rsi_value = None
+    
+    def add_price(self, price: float) -> Optional[float]:
+        """Add a new price and calculate RSI.
+        
+        Args:
+            price: New price
+        
+        Returns:
+            RSI value or None if not enough data
+        """
+        self.prices.append(price)
+        
+        if len(self.prices) < self.period + 1:
+            return None
+        
+        prices_list = list(self.prices)
+        gains = 0.0
+        losses = 0.0
+        
+        # Calculate price changes
+        for i in range(1, len(prices_list)):
+            change = prices_list[i] - prices_list[i - 1]
+            if change > 0:
+                gains += change
+            else:
+                losses += abs(change)
+        
+        avg_gain = gains / self.period
+        avg_loss = losses / self.period
+        
+        if avg_loss == 0:
+            self.rsi_value = 100.0 if avg_gain > 0 else 0.0
+        else:
+            rs = avg_gain / avg_loss
+            self.rsi_value = 100.0 - (100.0 / (1.0 + rs))
+        
+        return self.rsi_value
+    
+    def get_rsi(self) -> Optional[float]:
+        """Get current RSI value.
+        
+        Returns:
+            RSI value or None
+        """
+        return self.rsi_value
+    
+    def reset(self):
+        """Reset RSI calculator."""
+        self.prices.clear()
+        self.rsi_value = None
+
+
+class ATR:
+    """Average True Range indicator."""
+    
+    def __init__(self, period: int = 14):
+        """Initialize ATR calculator.
+        
+        Args:
+            period: ATR period (default 14)
+        """
+        self.period = period
+        self.true_ranges = deque(maxlen=period)
+        self.atr_value = None
+        self.first_atr = True
+    
+    def add_candle(self, high: float, low: float, close: float,
+                   prev_close: float = None) -> Optional[float]:
+        """Add a candle and calculate ATR.
+        
+        Args:
+            high: High price of candle
+            low: Low price of candle
+            close: Close price of candle
+            prev_close: Previous close price
+        
+        Returns:
+            ATR value or None if not enough data
+        """
+        # Calculate true range
+        tr1 = high - low
+        tr2 = abs(high - prev_close) if prev_close else 0
+        tr3 = abs(low - prev_close) if prev_close else 0
+        true_range = max(tr1, tr2, tr3)
+        
+        self.true_ranges.append(true_range)
+        
+        if len(self.true_ranges) < self.period:
+            return None
+        
+        # Calculate ATR
+        if self.first_atr:
+            self.atr_value = sum(self.true_ranges) / self.period
+            self.first_atr = False
+        else:
+            self.atr_value = (self.atr_value * (self.period - 1) + true_range) / self.period
+        
+        return self.atr_value
+    
+    def get_atr(self) -> Optional[float]:
+        """Get current ATR value.
+        
+        Returns:
+            ATR value or None
+        """
+        return self.atr_value
+    
+    def reset(self):
+        """Reset ATR calculator."""
+        self.true_ranges.clear()
+        self.atr_value = None
+        self.first_atr = True
+
+
+class ADX:
+    """Average Directional Index indicator."""
+    
+    def __init__(self, period: int = 14):
+        """Initialize ADX calculator.
+        
+        Args:
+            period: ADX period (default 14)
+        """
+        self.period = period
+        self.plus_dm_values = deque(maxlen=period)
+        self.minus_dm_values = deque(maxlen=period)
+        self.plus_di = None
+        self.minus_di = None
+        self.adx_value = None
+        self.dx_values = deque(maxlen=period)
+        self.first_adx = True
+    
+    def add_candle(self, high: float, low: float, close: float,
+                   prev_high: float = None, prev_low: float = None,
+                   prev_close: float = None, atr: float = None) -> Optional[float]:
+        """Add a candle and calculate ADX.
+        
+        Args:
+            high: High price
+            low: Low price
+            close: Close price
+            prev_high: Previous high
+            prev_low: Previous low
+            prev_close: Previous close
+            atr: ATR value for DI calculation
+        
+        Returns:
+            ADX value or None if not enough data
+        """
+        if prev_high is None or prev_low is None:
+            return None
+        
+        # Calculate directional movements
+        plus_dm = max(high - prev_high, 0) if high > prev_high else 0
+        minus_dm = max(prev_low - low, 0) if low < prev_low else 0
+        
+        # Apply directional rules
+        if plus_dm > minus_dm:
+            minus_dm = 0
+        elif minus_dm > plus_dm:
+            plus_dm = 0
+        elif plus_dm == minus_dm and plus_dm > 0:
+            plus_dm = 0
+            minus_dm = 0
+        
+        self.plus_dm_values.append(plus_dm)
+        self.minus_dm_values.append(minus_dm)
+        
+        if len(self.plus_dm_values) < self.period or atr is None or atr == 0:
+            return None
+        
+        # Calculate DI values
+        plus_di_raw = (sum(self.plus_dm_values) / atr) * 100
+        minus_di_raw = (sum(self.minus_dm_values) / atr) * 100
+        
+        self.plus_di = plus_di_raw
+        self.minus_di = minus_di_raw
+        
+        # Calculate DX
+        di_sum = self.plus_di + self.minus_di
+        if di_sum > 0:
+            dx = (abs(self.plus_di - self.minus_di) / di_sum) * 100
+            self.dx_values.append(dx)
+        
+        if len(self.dx_values) < self.period:
+            return None
+        
+        # Calculate ADX
+        if self.first_adx:
+            self.adx_value = sum(self.dx_values) / self.period
+            self.first_adx = False
+        else:
+            self.adx_value = (self.adx_value * (self.period - 1) + self.dx_values[-1]) / self.period
+        
+        return self.adx_value
+    
+    def get_adx(self) -> Optional[float]:
+        """Get current ADX value.
+        
+        Returns:
+            ADX value or None
+        """
+        return self.adx_value
+    
+    def get_plus_di(self) -> Optional[float]:
+        """Get +DI value."""
+        return self.plus_di
+    
+    def get_minus_di(self) -> Optional[float]:
+        """Get -DI value."""
+        return self.minus_di
+    
+    def reset(self):
+        """Reset ADX calculator."""
+        self.plus_dm_values.clear()
+        self.minus_dm_values.clear()
+        self.dx_values.clear()
+        self.plus_di = None
+        self.minus_di = None
+        self.adx_value = None
+        self.first_adx = True
