@@ -18,7 +18,7 @@ jobs:
       with:
         python-version: '3.12'
     
-    - name: Install pip and dependencies
+    - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
         pip install -r requirements.txt
@@ -90,7 +90,8 @@ jobs:
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: python << 'VALIDATION_SCRIPT'
+      run: |
+        python - <<EOF
 import sys
 import os
 from dotenv import load_dotenv
@@ -102,7 +103,6 @@ print()
 
 errors = []
 
-# Check required environment variables
 required_vars = {
     'IIFL_USERNAME': 'IIFL Username',
     'IIFL_PASSWORD': 'IIFL Password',
@@ -119,7 +119,6 @@ for var, description in required_vars.items():
     else:
         print(f'✅ {description} configured')
 
-# Check optional trading config
 trading_vars = {
     'TRADING_MODE': 'Trading Mode',
     'SYMBOL': 'Symbol',
@@ -142,14 +141,15 @@ if errors:
 
 print()
 print('✅ All configuration validated successfully!')
-VALIDATION_SCRIPT
+EOF
     
     - name: Send Deployment Notification to Telegram
       if: always()
       env:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-      run: python << 'TELEGRAM_SCRIPT'
+      run: |
+        python - <<EOF
 import requests
 import os
 
@@ -204,7 +204,7 @@ try:
         print(response.text)
 except Exception as e:
     print(f'⚠️ Could not send Telegram notification: {e}')
-TELEGRAM_SCRIPT
+EOF
     
     - name: Start Trade Engine
       run: |
