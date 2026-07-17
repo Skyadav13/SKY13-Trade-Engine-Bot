@@ -8,26 +8,34 @@ import os
 import sys
 import requests
 
+
 def send_telegram_notification():
     """Send deployment notification to Telegram."""
     bot_token = os.getenv('TELEGRAM_BOT_TOKEN')
     chat_id = os.getenv('TELEGRAM_CHAT_ID')
-    
+    iifl_key = os.getenv('IIFL_API_KEY') or os.getenv('IIFL_VENDOR_KEY') or os.getenv('IIFL_API_KEY')
+
     if not bot_token or not chat_id:
         print('⚠️ Telegram credentials not configured')
         return False
-    
-    message = """🚀 *SKY13 Trade Engine Bot - Deployment Started*
+
+    # Build the correct login URL including appkey (vendor key)
+    if iifl_key:
+        login_url = f'https://markets.iiflcapital.com/?appkey={iifl_key}&v=1'
+    else:
+        login_url = 'https://markets.iiflcapital.com/?appkey=<YOUR_IIFL_API_KEY>&v=1'
+
+    message = f"""🚀 *SKY13 Trade Engine Bot - Deployment Started*
 
 ✅ *Configuration Validated*
 
 📋 *Next Steps to Activate Bot:*
 
 1️⃣ *Get IIFL AUTH_CODE:*
-   - Visit: https://markets.iiflcapital.com/
+   - Visit: {login_url}
    - Login with your credentials
    - Enter OTP
-   - Look at redirect URL for auth_code parameter
+   - Look at redirect URL for authCode parameter
    - Copy the AUTH_CODE value
 
 2️⃣ *Send AUTH_CODE to Bot:*
@@ -44,13 +52,13 @@ def send_telegram_notification():
 
 🔐 Waiting for your AUTH_CODE...
 """
-    
+
     url = f'https://api.telegram.org/bot{bot_token}/sendMessage'
     payload = {
         'chat_id': chat_id,
         'text': message
     }
-    
+
     try:
         response = requests.post(url, json=payload, timeout=10)
         if response.status_code == 200:
@@ -63,6 +71,7 @@ def send_telegram_notification():
     except Exception as e:
         print(f'⚠️ Could not send Telegram notification: {e}')
         return False
+
 
 if __name__ == '__main__':
     success = send_telegram_notification()
