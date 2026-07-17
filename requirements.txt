@@ -1,0 +1,14 @@
+python-dotenv==1.0.0
+requests==2.31.0
+python-telegram-bot==20.0
+pandas==2.0.3
+numpy==1.24.3
+ta==0.11.0
+python-dateutil==2.8.2
+pytz==2023.3
+sqlalchemy==2.0.19
+faust-cython==0.0.1
+flask==2.3.2
+gunicorn==20.1.0
+logging-loki==0.3.2
+apscheduler==3.10.4
