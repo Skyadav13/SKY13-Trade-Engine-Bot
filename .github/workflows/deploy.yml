@@ -49,7 +49,7 @@ jobs:
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: '3.12' # Upgraded to match test job and prevent requirement conflicts
+        python-version: '3.12'
     
     - name: Install uv installer
       run: |
@@ -60,30 +60,23 @@ jobs:
       run: |
         uv pip install --system -r requirements.txt
     
-   # - name: Create .env file
-    # run: |
-    #    echo "API_KEY=${{ secrets.API_KEY }}" >> .env
-     #   echo "API_SECRET=${{ secrets.API_SECRET }}" >> .env
-     #   echo "BROKER_URL=${{ secrets.BROKER_URL }}" >> .env
-      #  echo "LOG_LEVEL=${{ secrets.LOG_LEVEL }}" >> .env
-        - name: Run Trading Bot
+    - name: Create keys.conf
+      run: |
+        cat > keys.conf << EOF
+        [KEYS]
+        ENCRYPTION_KEY=${{ secrets.ENCRYPTION_KEY }}
+        EOF
+    
+    - name: Run Trading Bot
       env:
         # Pass your API keys securely via GitHub Secrets
-        
         IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
         IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
         IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
         IIFL_CLIENT_ID: ${{ secrets.IIFL_CLIENT_ID }}
         SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
-
-
-
-
-        
         # Inject your Telegram Keys (Make sure names match your GitHub Secrets exactly)
         TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }} 
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-    - name: Run bot
       run: |
         python main.py
-        
