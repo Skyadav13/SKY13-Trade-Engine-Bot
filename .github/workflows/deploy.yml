@@ -58,7 +58,7 @@ jobs:
         IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
         IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
         IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
-        IIFL_API_KEY: ${{ secrets.IIFL_API_KEY }}
+      #  IIFL_API_KEY: ${{ secrets.IIFL_API_KEY }}
         IIFL_API_SECRET: ${{ secrets.IIFL_API_SECRET }}
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -74,7 +74,7 @@ jobs:
         IIFL_PASSWORD=${{ env.IIFL_PASSWORD }}
         IIFL_VENDOR_KEY=${{ env.IIFL_VENDOR_KEY }}
         IIFL_APP_SECRET=${{ env.IIFL_APP_SECRET }}
-        IIFL_API_KEY=${{ env.IIFL_API_KEY }}
+     #   IIFL_API_KEY=${{ env.IIFL_API_KEY }}
         IIFL_API_SECRET=${{ env.IIFL_API_SECRET }}
         TELEGRAM_BOT_TOKEN=${{ env.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID=${{ env.TELEGRAM_CHAT_ID }}
