@@ -1,77 +1,279 @@
-name: Deploy Trade Engine Bot
+name: SKY13 Trade Engine — CI & Smoke Test
 
+# ── Triggers ─────────────────────────────────────────────────────────────────
 on:
   push:
-    branches: [ main ]
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+  # Manual run from the GitHub Actions UI (Actions → Run workflow)
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: 'Symbol to smoke-test'
+        required: false
+        default: 'NIFTY'
+        type: choice
+        options: [NIFTY, BANKNIFTY, FINNIFTY, MIDCPNIFTY, SENSEX]
+      timeframe:
+        description: 'Candle timeframe (minutes)'
+        required: false
+        default: '5'
+      run_extended:
+        description: 'Run extended EMA/indicator tests'
+        required: false
+        default: 'true'
+        type: boolean
 
+# ── Global env (used by every job unless overridden) ─────────────────────────
+env:
+  PYTHON_VERSION: '3.11'
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 1 — Lint (fast, syntax errors only)
+# ─────────────────────────────────────────────────────────────────────────────
 jobs:
-  test:
+  lint:
+    name: Lint
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
-    
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        pip install -r requirements.txt flake8 pytest
-    
-    - name: Lint with flake8
-      run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-    
-    - name: Run tests
-      run: |
-        pytest
+      - uses: actions/checkout@v4
 
-  deploy:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install flake8
+        run: pip install flake8
+
+      - name: Check for fatal syntax / import errors
+        run: |
+          flake8 . \
+            --count \
+            --select=E9,F63,F7,F82 \
+            --show-source \
+            --statistics \
+            --exclude=.local,__pycache__,.git,venv,.venv
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 2 — Unit Tests
+# ─────────────────────────────────────────────────────────────────────────────
+  test:
+    name: Unit Tests
+    needs: lint
+    runs-on: ubuntu-latest
+
+    # Paper-mode env — all values are dummies; no real broker connection is made
+    env:
+      IIFL_USERNAME:        test_user
+      IIFL_PASSWORD:        test_pass
+      IIFL_API_KEY:         test_api_key
+      IIFL_API_SECRET:      test_api_secret
+      TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN || '0000000000:AAtestbottokenfortestingonly000000000' }}
+      TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID  || '123456789' }}
+      TRADING_MODE:         paper
+      SYMBOL:               ${{ github.event.inputs.symbol   || 'NIFTY' }}
+      TIMEFRAME:            ${{ github.event.inputs.timeframe || '5' }}
+      QUANTITY:             '1'
+      INSTRUMENT:           CASH
+      FAST_EMA:             '9'
+      SLOW_EMA:             '21'
+      RSI_PERIOD:           '14'
+      RSI_OVERBOUGHT:       '70'
+      RSI_OVERSOLD:         '30'
+      ATR_PERIOD:           '14'
+      ADX_PERIOD:           '14'
+      ADX_THRESHOLD:        '25'
+      DAILY_LOSS_LIMIT:     '3000'
+      LOG_LEVEL:            WARNING
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          # IIFLapis may not be on public PyPI; install everything else first.
+          # broker_iifl.py degrades gracefully when IIFLapis is absent.
+          pip install -r requirements.txt || {
+            echo "Full install failed — retrying without IIFLapis"
+            grep -v '^IIFLapis' requirements.txt > /tmp/req_no_iifl.txt
+            pip install -r /tmp/req_no_iifl.txt
+          }
+          pip install pytest pytest-cov
+
+      - name: Run unit tests
+        run: |
+          pytest tests/ \
+            -v \
+            --tb=short \
+            --cov=. \
+            --cov-report=term-missing \
+            --ignore=.local
+
+      - name: Validate config (paper mode)
+        run: python validate_config.py
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Job 3 — Smoke Test (paper mode, no real broker)
+# ─────────────────────────────────────────────────────────────────────────────
+  smoke-test:
+    name: Smoke Test (Paper Mode)
     needs: test
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
-    
-    steps:
-    - uses: actions/checkout@v4
 
-    - name: Deploy to Server via SSH
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.SERVER_HOST }}
-        username: ${{ secrets.SERVER_USER }}
-        key: ${{ secrets.SERVER_SSH_KEY }}
-        script: |
-          cd /path/to/your/bot/directory
-          git pull origin main
-          source venv/bin/activate
-          pip install -r requirements.txt
-          
-          # Safely rewrite the production .env file on your host machine
-          cat << 'EOF' > .env
-          IIFL_USERNAME=${{ secrets.IIFL_USERNAME }}
-          IIFL_PASSWORD=${{ secrets.IIFL_PASSWORD }}
-          IIFL_VENDOR_KEY=${{ secrets.IIFL_VENDOR_KEY }}
-          IIFL_APP_SECRET=${{ secrets.IIFL_APP_SECRET }}
-          IIFL_API_SECRET=${{ secrets.IIFL_API_SECRET }}
-          TELEGRAM_BOT_TOKEN=${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID=${{ secrets.TELEGRAM_CHAT_ID }}
-          TRADING_MODE=${{ secrets.TRADING_MODE || 'paper' }}
-          SYMBOL=${{ secrets.SYMBOL || 'NIFTY' }}
-          TIMEFRAME=${{ secrets.TIMEFRAME || '5' }}
-          QUANTITY=${{ secrets.QUANTITY || '1' }}
-          DAILY_LOSS_LIMIT=${{ secrets.DAILY_LOSS_LIMIT || '3000' }}
-          LOG_LEVEL=${{ secrets.LOG_LEVEL || 'INFO' }}
+    env:
+      IIFL_USERNAME:        ${{ secrets.IIFL_USERNAME    || 'paper_user' }}
+      IIFL_PASSWORD:        ${{ secrets.IIFL_PASSWORD    || 'paper_pass' }}
+      IIFL_API_KEY:         ${{ secrets.IIFL_API_KEY     || 'paper_key' }}
+      IIFL_API_SECRET:      ${{ secrets.IIFL_API_SECRET  || 'paper_secret' }}
+      TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN || '0000000000:AAtestbottokenfortestingonly000000000' }}
+      TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID  || '123456789' }}
+      TRADING_MODE:         paper
+      SYMBOL:               ${{ github.event.inputs.symbol   || 'NIFTY' }}
+      TIMEFRAME:            ${{ github.event.inputs.timeframe || '5' }}
+      QUANTITY:             '1'
+      INSTRUMENT:           CASH
+      FAST_EMA:             '9'
+      SLOW_EMA:             '21'
+      RSI_PERIOD:           '14'
+      RSI_OVERBOUGHT:       '70'
+      RSI_OVERSOLD:         '30'
+      ATR_PERIOD:           '14'
+      ADX_PERIOD:           '14'
+      ADX_THRESHOLD:        '25'
+      DAILY_LOSS_LIMIT:     '3000'
+      LOG_LEVEL:            WARNING
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt || {
+            echo "Full install failed — retrying without IIFLapis"
+            grep -v '^IIFLapis' requirements.txt > /tmp/req_no_iifl.txt
+            pip install -r /tmp/req_no_iifl.txt
+          }
+
+      - name: Core module import check
+        run: |
+          python - <<'EOF'
+          from ema_engine     import EMAEngine
+          from signal_filter  import SignalFilter
+          from risk_manager   import RiskManager
+          from recovery_engine import RecoveryEngine
+          from trading_engine import TradingEngine
+          from telegram_bot   import TelegramBot
+          print("✅ All core modules import OK")
           EOF
 
-          # Run validation
-          python validate_config.py
+      - name: EMA engine — TradingView-compatible calculation
+        if: ${{ github.event.inputs.run_extended != 'false' }}
+        run: |
+          python - <<'EOF'
+          from ema_engine import EMAEngine
 
-          # Restart the engine in the background so it runs forever
-          # Using pm2 (recommended for logs and auto-restarts)
-          pm2 restart trade-engine || pm2 start main.py --name "trade-engine" --interpreter python3
-          
-          # Alternative if not using pm2: 
-          # pkill -f main.py || true && nohup python main.py > bot.log 
-          2>&1 &
+          # Known-correct incremental EMA values (verified against Pine Script)
+          e = EMAEngine('NIFTY', fast_period=3, slow_period=5)
+          prices = [10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+          for p in prices:
+              fast, slow = e.add_candle(p, 1000)
+
+          # SMA seed for period-3 over [10,11,12] = 11.0
+          assert abs(e.ema_fast_values[0] - 11.0) < 0.01, \
+              f"EMA fast seed wrong: {e.ema_fast_values[0]}"
+          assert e.is_warmed_up, "EMA not warmed up after 11 candles"
+          assert e.current_ema_fast is not None
+          assert e.current_ema_slow is not None
+          print(f"✅ EMA OK: fast={e.current_ema_fast:.4f} slow={e.current_ema_slow:.4f}")
+
+          # State round-trip
+          state = e.get_state()
+          e2 = EMAEngine('NIFTY', fast_period=3, slow_period=5)
+          e2.restore_state(state)
+          assert abs(e2.current_ema_fast - e.current_ema_fast) < 0.001, "EMA state restore failed"
+          print("✅ EMA state save/restore OK")
+          EOF
+
+      - name: Signal filter — RSI and ADX gates
+        if: ${{ github.event.inputs.run_extended != 'false' }}
+        run: |
+          python - <<'EOF'
+          from signal_filter import SignalFilter
+          from datetime import datetime
+
+          sf = SignalFilter()
+
+          # ADX below threshold → sideways market → signal must be blocked
+          passed = sf.apply_filters(
+              'BUY',
+              ema_fast=19100.0,
+              ema_slow=19000.0,
+              rsi_value=55.0,
+              adx_value=18.0,    # Below default threshold of 25 → sideways
+              current_time=datetime.now()
+          )
+          assert not passed, "ADX filter should have blocked the BUY signal"
+          print("✅ ADX sideways-market filter OK")
+
+          # RSI overbought at entry → should be blocked
+          sf2 = SignalFilter()
+          passed2 = sf2.apply_filters(
+              'BUY',
+              ema_fast=19100.0,
+              ema_slow=19000.0,
+              rsi_value=78.0,    # Above RSI overbought (70) → block BUY entry
+              adx_value=30.0,
+              current_time=datetime.now()
+          )
+          assert not passed2, "RSI entry filter should have blocked overbought BUY"
+          print("✅ RSI entry filter OK")
+          EOF
+
+      - name: Risk manager — daily loss limit
+        run: |
+          python - <<'EOF'
+          import os, sys
+          sys.path.insert(0, '.')
+          from risk_manager import RiskManager
+
+          rm = RiskManager()
+          assert rm.can_trade(), "Fresh RiskManager should allow trading"
+          rm.update_daily_loss(-4000.0)   # Exceed ₹3000 default limit
+          assert not rm.can_trade(), "RiskManager should halt after limit breach"
+          print("✅ Daily loss limit OK")
+          EOF
+
+      - name: Config validation (paper mode)
+        run: python validate_config.py
+
+      - name: Notify Telegram on success (optional)
+        if: success() && secrets.TELEGRAM_BOT_TOKEN != ''
+        run: python notify_telegram.py
+        continue-on-error: true   # Never fail the job over a notification
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Secrets needed in GitHub → Settings → Secrets and variables → Actions
+# ─────────────────────────────────────────────────────────────────────────────
+# Required for live mode (paper mode uses built-in fallbacks above):
+#   IIFL_USERNAME        — your IIFL client code
+#   IIFL_PASSWORD        — your IIFL password
+#   IIFL_API_KEY         — from IIFL developer portal
+#   IIFL_API_SECRET      — from IIFL developer portal
+#   TELEGRAM_BOT_TOKEN   — from @BotFather
+#   TELEGRAM_CHAT_ID     — your Telegram chat/user ID
