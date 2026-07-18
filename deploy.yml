@@ -54,6 +54,8 @@ jobs:
     
     - name: Create .env file
       run: |
+        
+        echo "IIFL_VENDOR_KEY=${{ secrets.IIFL_VENDOR_KEY }}" >> .env
         echo "API_KEY=${{ secrets.API_KEY }}" >> .env
         echo "API_SECRET=${{ secrets.API_SECRET }}" >> .env
         echo "IIFL_USERNAME=${{ secrets.IIFL_USERNAME }}" >> .env
