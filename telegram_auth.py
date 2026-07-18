@@ -278,4 +278,4 @@ Use /status to check connection status
                     message = "Authentication failed or token invalid."
                     logger.error(message)
                     return False
-                    return True
+                return True
