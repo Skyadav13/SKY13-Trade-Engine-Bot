@@ -269,8 +269,8 @@ Use /status to check connection status
 
                 logger.info('✅ IIFL login successful')
                 
-                                try:
-                    with open('.iifl_auth', 'w') as f:
+            try:
+                with open('.iifl_auth', 'w') as f:
                         f.write(self.auth_code)
                     logger.info('AUTH_CODE saved to .iifl_auth')
                 except Exception as e:
