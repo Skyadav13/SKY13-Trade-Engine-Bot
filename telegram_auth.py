@@ -268,12 +268,32 @@ Use /status to check connection status
 """ % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), config.trading.mode, config.trading.symbol, config.trading.timeframe)
 
                 logger.info('✅ IIFL login successful')
-                try:
+                
+                                try:
                     with open('.iifl_auth', 'w') as f:
                         f.write(self.auth_code)
                     logger.info('AUTH_CODE saved to .iifl_auth')
                 except Exception as e:
                     logger.warning('Could not write .iifl_auth: %s', e)
             else:
-                message = ""
-We attempted many commits and some previous create_or_update_file calls injected commit text into the file earlier. Need to replace rest of file with correct code. Let's finish file properly.
+                message = "Authentication failed or token invalid."
+                logger.error(message)
+                return False
+
+        return True
+        
+                
+                
+                
+                
+                
+                
+                #try:
+                    #with open('.iifl_auth', 'w') as f:
+                      #  f.write(self.auth_code)
+                   # logger.info('AUTH_CODE saved to .iifl_auth')
+               # except Exception as e:
+                  #  logger.warning('Could not write .iifl_auth: %s', e)
+           # else:
+              #  message = ""
+ #We attempted many commits and some previous create_or_update_file calls injected commit text into the file earlier. Need to replace rest of file with correct code. Let's finish file properly.
