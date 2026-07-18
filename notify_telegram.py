@@ -23,7 +23,7 @@ def send_telegram_notification():
     if iifl_key:
         login_url = f'https://markets.iiflcapital.com/?appkey={iifl_key}&v=1'
     else:
-        login_url = 'https://markets.iiflcapital.com/?appkey=<YOUR_IIFL_API_KEY>&v=1'
+        login_url = 'https://markets.iiflcapital.com/?appkey={IIFL_VENDOR_KEY}&v=1'
 
     message = f"""🚀 *SKY13 Trade Engine Bot - Deployment Started*
 
