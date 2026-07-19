@@ -127,16 +127,17 @@ jobs:
         IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
         IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
        run: |
-         if [ -z "$IIFL_VENDOR_KEY" ]; then
-          echo "❌ IIFL_VENDOR_KEY missing"
+        echo "Checking IIFL secrets..."
+         if [ -n "$IIFL_VENDOR_KEY" ]; then
+          echo "✅ IIFL_VENDOR_KEY loaded""
          else
-          echo "✅ IIFL_VENDOR_KEY loaded"
+          echo "❌ IIFL_VENDOR_KEY missing"
           fi
 
          if [ -z "$IIFL_APP_SECRET" ]; then
-           echo "❌ IIFL_APP_SECRET missing"
-         else
            echo "✅ IIFL_APP_SECRET loaded"
+         else
+           echo "❌ IIFL_VENDOR_KEY missing"
          fi    
             
             
@@ -150,9 +151,9 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TRADING_MODE: paper
-        SYMBOL: ${{ secrets.SYMBOL }}
-        TIMEFRAME: ${{ secrets.TIMEFRAME }}
-        QUANTITY: ${{ secrets.QUANTITY }}
+       # SYMBOL: ${{ secrets.SYMBOL }}
+       # TIMEFRAME: ${{ secrets.TIMEFRAME }}
+       # QUANTITY: ${{ secrets.QUANTITY }}
        run: |
         python validate_config.py
 
