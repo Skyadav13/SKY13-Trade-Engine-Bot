@@ -10,16 +10,28 @@ logger = logging.getLogger(__name__)
 # Try to import IIFLapis
 
     
+# Try to import IIFLapis
 
-    IIFLClient = None
+IIFLClient = None
+IIFL_AVAILABLE = False
+
 try:
     if os.getenv("TRADING_MODE", "paper").lower() != "paper":
         from IIFLapis import IIFLClient
-    IIFL_AVAILABLE = True
+        IIFL_AVAILABLE = True
+    else:
+        logger.info("Paper mode enabled. Skipping IIFLapis import.")
+
 except ImportError:
     IIFLClient = None
     IIFL_AVAILABLE = False
-    logger.warning('IIFLapis SDK not installed. Install with: pip install IIFLapis')
+    logger.warning(
+        "IIFLapis SDK not installed. Install with: pip install IIFLapis"
+    )
+except Exception as e:
+    IIFLClient = None
+    IIFL_AVAILABLE = False
+    logger.warning(f"IIFLapis configuration unavailable: {e}")
 
 
 class IIFLBroker:
