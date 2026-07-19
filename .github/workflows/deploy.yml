@@ -261,11 +261,13 @@ jobs:
 
       - name: Config validation (paper mode)
         run: python validate_config.py
-
-      - name: Notify Telegram on success (optional)
-        if: success() && secrets.TELEGRAM_BOT_TOKEN != ''
-        run: python notify_telegram.py
-        continue-on-error: true   # Never fail the job over a notification
+        
+       - name: Notify Telegram on success (optional)
+       if: ${{ success() && env.TELEGRAM_BOT_TOKEN != '' }}
+       env:
+       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+       run: python notify_telegram.py
+       continue-on-error: true  # Never fail the job over a notification
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Secrets needed in GitHub → Settings → Secrets and variables → Actions
