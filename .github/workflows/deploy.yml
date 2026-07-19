@@ -282,6 +282,14 @@ jobs:
           print("✅ RSI entry filter OK")
           EOF
 
+      - name: Create dummy IIFL config
+        run: |
+         cat > keys.conf <<EOF
+         [KEYS]
+         vendor_key=test_api_key
+         app_secret=test_api_secret
+         EOF
+      
       - name: Risk manager — daily loss limit
         run: |
           python - <<'EOF'
