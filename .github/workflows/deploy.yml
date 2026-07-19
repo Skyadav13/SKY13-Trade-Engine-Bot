@@ -142,20 +142,20 @@ jobs:
            echo "❌ IIFL_VENDOR_KEY missing"
          fi    
    
-         - name: Validate config (paper mode)
-            env:
-              IIFL_USERNAME: ${{ secrets.IIFL_USERNAME }}
-              IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
-              IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
-              IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
-              TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-              TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-              TRADING_MODE: paper
-              SYMBOL: ${{ github.event.inputs.symbol || 'NIFTY' }}
-              TIMEFRAME: ${{ github.event.inputs.timeframe || '5' }}
-              QUANTITY: '1'
-            run: |
-             python validate_config.py
+      - name: Validate config (paper mode)
+        env:
+          IIFL_USERNAME: ${{ secrets.IIFL_USERNAME }}
+          IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
+          IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
+          IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TRADING_MODE: paper
+          SYMBOL: ${{ github.event.inputs.symbol || 'NIFTY' }}
+          TIMEFRAME: ${{ github.event.inputs.timeframe || '5' }}
+          QUANTITY: '1'
+        run: |
+          python validate_config.py
 
          
 # ─────────────────────────────────────────────────────────────────────────────
