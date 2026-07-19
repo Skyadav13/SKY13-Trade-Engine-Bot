@@ -122,11 +122,26 @@ jobs:
          fi
         
             
-            
+      - name: Check IIFL secret loading
+      env:
+        IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
+        IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
+       run: |
+         if [ -z "$IIFL_VENDOR_KEY" ]; then
+          echo "❌ IIFL_VENDOR_KEY missing"
+         else
+          echo "✅ IIFL_VENDOR_KEY loaded"
+          fi
+
+         if [ -z "$IIFL_APP_SECRET" ]; then
+           echo "❌ IIFL_APP_SECRET missing"
+         else
+           echo "✅ IIFL_APP_SECRET loaded"
+         fi    
             
             
 
-      - name: Validate config (paper mode)
+         - name: Validate config (paper mode)
       env:
         IIFL_USERNAME: ${{ secrets.IIFL_USERNAME }}
         IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
