@@ -1,4 +1,5 @@
 """IIFL Broker API Integration using IIFLapis SDK."""
+import os
 import logging
 from typing import Dict, List, Optional
 from datetime import datetime, timedelta
@@ -8,7 +9,7 @@ logger = logging.getLogger(__name__)
 
 # Try to import IIFLapis
 
-    import os
+    
 
     IIFLClient = None
 try:
