@@ -141,6 +141,13 @@ jobs:
        run: |
         python validate_config.py
 
+          - name: Check IIFL secret availability
+            env:
+            IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
+            IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
+          run: |
+            [ -n "$IIFL_VENDOR_KEY" ] && echo "✅ Vendor key loaded" || echo "❌ Vendor key missing"
+            [ -n "$IIFL_APP_SECRET" ] && echo "✅ App secret loaded" || echo "❌ App secret missing"
 # ─────────────────────────────────────────────────────────────────────────────
 # Job 3 — Smoke Test (paper mode, no real broker)
 # ─────────────────────────────────────────────────────────────────────────────
