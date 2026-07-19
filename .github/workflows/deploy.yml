@@ -127,7 +127,19 @@ jobs:
             
 
       - name: Validate config (paper mode)
-        run: python validate_config.py
+      env:
+        IIFL_USERNAME: ${{ secrets.IIFL_USERNAME }}
+        IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
+        IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
+        IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        TRADING_MODE: paper
+        SYMBOL: ${{ secrets.SYMBOL }}
+        TIMEFRAME: ${{ secrets.TIMEFRAME }}
+        QUANTITY: ${{ secrets.QUANTITY }}
+       run: |
+        python validate_config.py
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Job 3 — Smoke Test (paper mode, no real broker)
