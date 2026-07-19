@@ -11,6 +11,7 @@ try:
     from IIFLapis import IIFLClient
     IIFL_AVAILABLE = True
 except ImportError:
+    IIFLClient = None
     IIFL_AVAILABLE = False
     logger.warning('IIFLapis SDK not installed. Install with: pip install IIFLapis')
 
