@@ -90,7 +90,7 @@ jobs:
       LOG_LEVEL:            WARNING
 
     steps:
-     - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -131,9 +131,9 @@ jobs:
          echo "Checking IIFL secrets..."
          
          if [ -n "$IIFL_VENDOR_KEY" ]; then
-          echo "✅ IIFL_VENDOR_KEY loaded"
+           echo "✅ IIFL_VENDOR_KEY loaded"
          else
-          echo "❌ IIFL_VENDOR_KEY missing"
+           echo "❌ IIFL_VENDOR_KEY missing"
          fi
 
          if [ -n "$IIFL_APP_SECRET" ]; then
@@ -144,17 +144,17 @@ jobs:
    
          - name: Validate config (paper mode)
             env:
-             IIFL_USERNAME: ${{ secrets.IIFL_USERNAME }}
-             IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
-             IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
-             IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
-             TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-             TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-             TRADING_MODE: paper
-             SYMBOL: ${{ secrets.SYMBOL }}
-             TIMEFRAME: ${{ secrets.TIMEFRAME }}
-             QUANTITY: '1'
-          run: |
+              IIFL_USERNAME: ${{ secrets.IIFL_USERNAME }}
+              IIFL_PASSWORD: ${{ secrets.IIFL_PASSWORD }}
+              IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
+              IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
+              TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+              TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+              TRADING_MODE: paper
+              SYMBOL: ${{ github.event.inputs.symbol || 'NIFTY' }}
+              TIMEFRAME: ${{ github.event.inputs.timeframe || '5' }}
+              QUANTITY: '1'
+            run: |
              python validate_config.py
 
          
