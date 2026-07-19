@@ -76,18 +76,18 @@ jobs:
       TRADING_MODE:         paper
       SYMBOL: ${{ github.event.inputs.symbol || 'NIFTY' }}
       TIMEFRAME: ${{ github.event.inputs.timeframe || '5' }}
-      QUANTITY:             '1'
-      INSTRUMENT:           CASH
-      FAST_EMA:             '9'
-      SLOW_EMA:             '21'
-      RSI_PERIOD:           '14'
-      RSI_OVERBOUGHT:       '70'
-      RSI_OVERSOLD:         '30'
-      ATR_PERIOD:           '14'
-      ADX_PERIOD:           '14'
-      ADX_THRESHOLD:        '25'
-      DAILY_LOSS_LIMIT:     '3000'
-      LOG_LEVEL:            WARNING
+      QUANTITY: '1'
+      INSTRUMENT: CASH
+      FAST_EMA: '9'
+      SLOW_EMA: '21'
+      RSI_PERIOD: '14'
+      RSI_OVERBOUGHT: '70'
+      RSI_OVERSOLD: '30'
+      ATR_PERIOD: '14'
+      ADX_PERIOD: '14'
+      ADX_THRESHOLD: '25'
+      DAILY_LOSS_LIMIT: '3000'
+      LOG_LEVEL: WARNING
 
     steps:
       - uses: actions/checkout@v4
@@ -127,7 +127,7 @@ jobs:
         env:
           IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
           IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
-       run: |
+        run: |
          echo "Checking IIFL secrets..."
          
          if [ -n "$IIFL_VENDOR_KEY" ]; then
