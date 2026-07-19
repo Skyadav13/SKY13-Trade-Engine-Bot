@@ -131,7 +131,7 @@ jobs:
          echo "Checking IIFL secrets..."
          
          if [ -n "$IIFL_VENDOR_KEY" ]; then
-          echo "✅ IIFL_VENDOR_KEY loaded""
+          echo "✅ IIFL_VENDOR_KEY loaded"
          else
           echo "❌ IIFL_VENDOR_KEY missing"
          fi
