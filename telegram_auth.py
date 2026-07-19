@@ -266,12 +266,30 @@ To establish connection with IIFL server, please provide your AUTH_CODE:
 
 Use /status to check connection status
 """ % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), config.trading.mode, config.trading.symbol, config.trading.timeframe)
-                logger.info('✅ IIFL login successful')
+                                logger.info('✅ IIFL login successful')
+
                 try:
                     with open('.iifl_auth', 'w') as f:
                         f.write(self.auth_code)
                     logger.info('AUTH_CODE saved to .iifl_auth')
                 except Exception as e:
                     logger.warning('Could not write .iifl_auth: %s', e)
-                    return False
-                return True
+
+                await query.edit_message_text(message, parse_mode='Markdown')
+                return ConversationHandler.END
+
+            else:
+                logger.error('❌ IIFL login failed')
+                await query.edit_message_text(
+                    '❌ IIFL login failed. Please retry authentication.',
+                    parse_mode='Markdown'
+                )
+                return ConversationHandler.END
+
+        except Exception as e:
+            logger.exception('IIFL authentication error: %s', e)
+            await query.edit_message_text(
+                f'❌ IIFL authentication error: {e}',
+                parse_mode='Markdown'
+            )
+            return ConversationHandler.END
