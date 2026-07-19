@@ -110,6 +110,29 @@ jobs:
           }
           pip install pytest pytest-cov
 
+      
+
+      - name: Create dummy IIFL keys.conf for paper mode
+        run: |
+          cat > keys.conf <<EOF
+          [KEYS]
+          VENDOR_KEY=test_api_key
+          APP_SECRET=test_api_secret
+          ENCRYPTION_KEY=test_encryption_key
+          EOF
+
+      - name: Core module import check
+        run: |
+          python - <<'EOF'
+          from ema_engine import EMAEngine
+          from signal_filter import SignalFilter
+          from risk_manager import RiskManager
+          from recovery_engine import RecoveryEngine
+          from trading_engine import TradingEngine
+          from telegram_bot import TelegramBot
+          print("✅ All core modules import OK")
+          EOF
+
       - name: Run tests
         run: |
          if [ -d "tests" ]; then
