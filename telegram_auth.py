@@ -265,8 +265,14 @@ To establish connection with IIFL server, please provide your AUTH_CODE:
 - Timeframe: %s min
 
 Use /status to check connection status
-""" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), config.trading.mode, config.trading.symbol, config.trading.timeframe)
-                                logger.info('✅ IIFL login successful')
+""" % (
+                    datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    config.trading.mode,
+                    config.trading.symbol,
+                    config.trading.timeframe
+                )
+
+                logger.info('✅ IIFL login successful')
 
                 try:
                     with open('.iifl_auth', 'w') as f:
