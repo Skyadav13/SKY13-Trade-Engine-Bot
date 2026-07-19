@@ -273,8 +273,6 @@ Use /status to check connection status
                     logger.info('AUTH_CODE saved to .iifl_auth')
                 except Exception as e:
                     logger.warning('Could not write .iifl_auth: %s', e)
-                else:
-                    message = "Authentication failed or token invalid."
-                    logger.error(message)
                     return False
-                return True
+
+                 return True
