@@ -112,15 +112,19 @@ jobs:
       - name: Run tests
         run: |
          if [ -d "tests" ]; then
-           pytest -v tests/
+           pytest -v tests/ \
+           --tb=short \
+           --cov=. \
+           --cov-report=term-missing \
+           --ignore=.local
          else
-          echo "No tests directory found, skipping pytest"
+           echo "No tests directory found, skipping pytest"
          fi
-            -v \
-            --tb=short \
-            --cov=. \
-            --cov-report=term-missing \
-            --ignore=.local
+        
+            
+            
+            
+            
 
       - name: Validate config (paper mode)
         run: python validate_config.py
