@@ -70,11 +70,11 @@ jobs:
       IIFL_PASSWORD:        test_pass
       IIFL_API_KEY:         test_api_key
       IIFL_API_SECRET:      test_api_secret
-      TELEGRAM_BOT_TOKEN:   ${{ secrets.TELEGRAM_BOT_TOKEN || '0000000000:AAtestbottokenfortestingonly000000000' }}
-      TELEGRAM_CHAT_ID:     ${{ secrets.TELEGRAM_CHAT_ID  || '123456789' }}
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       TRADING_MODE:         paper
-      SYMBOL:               ${{ github.event.inputs.symbol   || 'NIFTY' }}
-      TIMEFRAME:            ${{ github.event.inputs.timeframe || '5' }}
+      SYMBOL: ${{ inputs.symbol }}
+      TIMEFRAME: ${{ inputs.timeframe }}
       QUANTITY:             '1'
       INSTRUMENT:           CASH
       FAST_EMA:             '9'
@@ -261,13 +261,14 @@ jobs:
 
       - name: Config validation (paper mode)
         run: python validate_config.py
-        
-       - name: Notify Telegram on success (optional)
-       if: ${{ success() && env.TELEGRAM_BOT_TOKEN != '' }}
-       env:
-       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-       run: python notify_telegram.py
-       continue-on-error: true  # Never fail the job over a notification
+
+      - name: Notify Telegram on success (optional)
+        if: success()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python notify_telegram.py
+        continue-on-error: true
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Secrets needed in GitHub → Settings → Secrets and variables → Actions
