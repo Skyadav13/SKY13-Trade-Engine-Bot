@@ -68,8 +68,8 @@ jobs:
     env:
       IIFL_USERNAME:        test_user
       IIFL_PASSWORD:        test_pass
-      IIFL_API_KEY:         test_api_key
-      IIFL_API_SECRET:      test_api_secret
+      IIFL_VENDOR_KEY:         test_api_key
+      IIFL_APP_SECRET:     test_api_secret
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
       TRADING_MODE:         paper
@@ -127,21 +127,20 @@ jobs:
         IIFL_VENDOR_KEY: ${{ secrets.IIFL_VENDOR_KEY }}
         IIFL_APP_SECRET: ${{ secrets.IIFL_APP_SECRET }}
        run: |
-        echo "Checking IIFL secrets..."
+         echo "Checking IIFL secrets..."
+         
          if [ -n "$IIFL_VENDOR_KEY" ]; then
           echo "✅ IIFL_VENDOR_KEY loaded""
          else
           echo "❌ IIFL_VENDOR_KEY missing"
-          fi
+         fi
 
-         if [ -z "$IIFL_APP_SECRET" ]; then
+         if [ -n "$IIFL_APP_SECRET" ]; then
            echo "✅ IIFL_APP_SECRET loaded"
          else
            echo "❌ IIFL_VENDOR_KEY missing"
          fi    
-            
-            
-
+   
          - name: Validate config (paper mode)
       env:
         IIFL_USERNAME: ${{ secrets.IIFL_USERNAME }}
@@ -151,9 +150,9 @@ jobs:
         TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
         TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         TRADING_MODE: paper
-       # SYMBOL: ${{ secrets.SYMBOL }}
-       # TIMEFRAME: ${{ secrets.TIMEFRAME }}
-       # QUANTITY: ${{ secrets.QUANTITY }}
+        SYMBOL: ${{ secrets.SYMBOL }}
+        TIMEFRAME: ${{ secrets.TIMEFRAME }}
+        QUANTITY: '1'
        run: |
         python validate_config.py
 
