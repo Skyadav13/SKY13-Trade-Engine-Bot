@@ -120,6 +120,7 @@ jobs:
           APP_SECRET=test_api_secret
           ENCRYPTION_KEY=test_encryption_key
           APP_SOURCE=test_source
+          APP_NAME=test_app
           EOF
 
 
