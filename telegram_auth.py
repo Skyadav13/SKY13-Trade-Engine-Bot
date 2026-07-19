@@ -274,5 +274,4 @@ Use /status to check connection status
                 except Exception as e:
                     logger.warning('Could not write .iifl_auth: %s', e)
                     return False
-
-                 return True
+                return True
