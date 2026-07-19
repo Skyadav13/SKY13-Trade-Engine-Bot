@@ -8,6 +8,11 @@ logger = logging.getLogger(__name__)
 
 # Try to import IIFLapis
 try:
+    import os
+
+IIFLClient = None
+
+if os.getenv("TRADING_MODE", "paper").lower() != "paper":
     from IIFLapis import IIFLClient
     IIFL_AVAILABLE = True
 except ImportError:
